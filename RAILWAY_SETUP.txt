@@ -1,35 +1,30 @@
-RAILWAY SETUP
+RAILWAY SETUP - FIXED VERSION
 
-1) Upload these files to a PRIVATE GitHub repository:
-   bot.py
-   requirements.txt
-   Dockerfile
-   railway.toml
-   .gitignore
-   .env.example
-   uploader.db (optional seed database; keep repository PRIVATE)
-
+1) Upload the project to a PRIVATE GitHub repository.
 2) Railway -> New Project -> Deploy from GitHub Repo.
-
 3) Variables:
-   BOT_TOKEN=YOUR_NEW_TOKEN
+   BOT_TOKEN=YOUR_NEW_BOT_TOKEN
    ADMIN_IDS=7692023421
    PROXY_URL=
+   BASE_URL=
+   PORT=8080
+   WEB_PORT=8080
    JOIN_CHANNEL=@eldnv
    STORAGE_CHANNEL_ID=-1004384688918
    DB_PATH=/data/uploader.db
-   PORT=8080
-
-4) Add a Volume mounted at /data.
-
-5) In Service -> Settings -> Networking -> Public Networking, Generate Domain.
-   The app automatically uses https://$RAILWAY_PUBLIC_DOMAIN for generated links.
-
-6) Deploy.
+4) Add a Railway Volume and mount it at /data.
+5) Generate a public domain under Settings -> Networking.
+6) Redeploy.
 
 IMPORTANT:
-- Do not upload .env. Put secrets in Railway Variables.
-- Revoke any bot token that was exposed and use a new token.
-- Leave PROXY_URL empty on Railway unless you have a real remote proxy endpoint.
-- The first time the /data volume is empty, the bundled uploader.db is copied to /data/uploader.db. Existing database is never overwritten.
-- The web server listens on Railway's PORT and on 0.0.0.0.
+- Do not commit a real .env or bot token.
+- The included uploader.db is the database from the supplied project. Keep the repository private.
+- If the Volume already contains /data/uploader.db, it is never overwritten by the seed DB.
+- Railway's environment variables take precedence over values in a local .env file.
+
+FIXES IN THIS VERSION:
+- Fixed "Add files" on an existing group: it now appends to that same group instead of creating a new group.
+- Safer Unicode download filenames via RFC 5987 Content-Disposition.
+- Broadcast is slower and retries Telegram rate-limit responses.
+- Railway environment variables are no longer overwritten by a local .env file.
+- Clearer SQLite startup error when the Volume/DB path is unavailable.

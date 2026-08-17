@@ -25,7 +25,7 @@ from aiogram.client.session.aiohttp import AiohttpSession
 # =========================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env", override=True)
+load_dotenv(BASE_DIR / ".env", override=False)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 PROXY_URL = os.getenv("PROXY_URL", "").strip()
@@ -66,8 +66,9 @@ bot = Bot(BOT_TOKEN, session=session)
 dp = Dispatcher()
 
 # Runtime-only state. A restart intentionally clears unfinished operations.
-upload_modes = {}       # uid -> "single" | "group"
+upload_modes = {}       # uid -> "single" | "group" | "group_append"
 upload_items = {}       # uid -> list[item]
+group_append_tokens = {}  # uid -> existing group token
 admin_actions = {}      # uid -> action
 broadcast_lock = asyncio.Lock()
 
@@ -524,6 +525,43 @@ def create_group(uid, title, items):
         c.close()
 
 
+def append_group_items(uid, token, items):
+    if not items:
+        return False, "هیچ آیتمی برای افزودن وجود ندارد."
+    c = db()
+    try:
+        group = c.execute("""
+            SELECT id FROM groups
+            WHERE token=? AND owner_id=? AND active=1
+        """, (token, uid)).fetchone()
+        if not group:
+            return False, "مجموعه پیدا نشد یا غیرفعال شده است."
+
+        next_pos = c.execute(
+            "SELECT COALESCE(MAX(position),0)+1 FROM group_items WHERE group_id=?",
+            (group["id"],),
+        ).fetchone()[0]
+
+        for offset, item in enumerate(items):
+            c.execute("""
+                INSERT INTO group_items(
+                    group_id, position, file_id, file_name,
+                    file_size, file_type, text_content
+                ) VALUES(?,?,?,?,?,?,?)
+            """, (
+                group["id"], next_pos + offset, item.get("file_id"),
+                item.get("file_name"), item.get("file_size", 0),
+                item.get("file_type"), item.get("text_content"),
+            ))
+        c.commit()
+        return True, "فایل‌ها به مجموعه اضافه شدند."
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        c.close()
+
+
 def get_group(token):
     c = db()
     group = c.execute("""
@@ -588,6 +626,7 @@ def clear_user_state(uid):
     admin_actions.pop(uid, None)
     upload_modes.pop(uid, None)
     upload_items.pop(uid, None)
+    group_append_tokens.pop(uid, None)
 
 
 # =========================================================
@@ -642,6 +681,16 @@ def main_keyboard():
     )
 
 
+def upload_control_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [styled_button("❌ انصراف", "danger"), styled_button("✅ پایان", "success")],
+        ],
+        resize_keyboard=True,
+        is_persistent=False,
+    )
+
+
 def upload_success_keyboard(bot_url, web_url, token):
     share_url = f"https://t.me/share/url?url={quote(bot_url, safe='')}"
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -678,6 +727,7 @@ def settings_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
             [styled_button("👥 لیست کاربران", "primary"), styled_button("🚫 لیست مسدودها", "danger")],
+            [styled_button("🚫 مسدود کردن کاربر", "danger"), styled_button("✅ رفع مسدودی کاربر", "success")],
             [styled_button("👑 لیست ادمین‌ها", "primary"), styled_button("➕ افزودن ادمین", "success")],
             [styled_button("➖ حذف ادمین", "danger"), styled_button("🔐 عضویت اجباری", "primary")],
             [styled_button("📊 آمار کلی", "primary"), styled_button("📁 تنظیمات فایل‌ها", "primary")],
@@ -890,6 +940,23 @@ async def process_upload(message: Message):
             parse_mode="HTML",
         )
 
+    if mode == "group_append":
+        token = group_append_tokens.get(uid)
+        if not token:
+            clear_user_state(uid)
+            return await message.answer("❌ مجموعه انتخاب‌شده پیدا نشد.", reply_markup=main_keyboard())
+        upload_items.setdefault(uid, []).append(item)
+        await maybe_storage_copy(message)
+        count = len(upload_items[uid])
+        return await message.answer(
+            f"✅ آیتم <b>{count}</b> برای افزودن به مجموعه آماده شد.\n\n"
+            f"📁 {escape(item['file_name'] or 'file')}\n"
+            f"💾 {fmt_size(item['file_size'])}\n\n"
+            "📤 فایل بعدی را بفرست.\n"
+            "وقتی تمام شد /done را بزن.",
+            parse_mode="HTML",
+        )
+
     if mode == "single":
         try:
             await maybe_storage_copy(message)
@@ -961,14 +1028,16 @@ async def group_add_file_callback(callback: CallbackQuery):
     if not is_admin(uid):
         return await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
     admin_actions.pop(uid, None)
-    upload_modes[uid] = "group"
+    group_append_tokens[uid] = callback.data.split(":", 1)[1]
+    upload_modes[uid] = "group_append"
     upload_items[uid] = []
     await callback.answer("➕ حالت افزودن فایل فعال شد.")
     await callback.message.answer(
         "📦 <b>افزودن فایل به مجموعه</b>\n\n"
-        "فایل‌های جدید را بفرست و در پایان /done را بزن.\n"
-        "لغو: /cancel",
+        "فایل‌های جدید را بفرست و در پایان روی «✅ پایان» بزن.\n"
+        "برای لغو روی «❌ انصراف» بزن.",
         parse_mode="HTML",
+        reply_markup=upload_control_keyboard(),
     )
 
 
@@ -1069,14 +1138,14 @@ async def start_handler(message: Message):
             reply_markup=join_keyboard(),
         )
 
-    await message.answer("👋 خوش آمدی!", reply_markup=main_keyboard())
+    await message.answer("👋 خوش آمدی!", reply_markup=main_keyboard() if is_admin(uid) else None)
 
 
 @dp.callback_query(F.data == "check_join")
 async def check_join(callback: CallbackQuery):
     if await check_membership(callback.from_user.id):
         await callback.answer("عضویت تأیید شد.", show_alert=False)
-        await callback.message.answer("✅ عضویت تأیید شد.", reply_markup=main_keyboard())
+        await callback.message.answer("✅ عضویت تأیید شد.", reply_markup=main_keyboard() if is_admin(callback.from_user.id) else None)
     else:
         await callback.answer("هنوز عضو همه کانال‌ها نیستی.", show_alert=True)
         await callback.message.answer(
@@ -1094,13 +1163,15 @@ async def upload_single(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ فقط ادمین‌ها اجازه آپلود دارند.")
     admin_actions.pop(message.from_user.id, None)
+    group_append_tokens.pop(message.from_user.id, None)
     upload_modes[message.from_user.id] = "single"
     upload_items.pop(message.from_user.id, None)
     await message.answer(
         "🟢 <b>آپلود تکی فعال شد.</b>\n\n"
         "فایل، عکس، ویدیو، صدا یا متن را بفرست.\n"
-        "لغو: /cancel",
+        "بعد از ارسال فایل، آپلود به‌صورت خودکار تکمیل می‌شود.",
         parse_mode="HTML",
+        reply_markup=upload_control_keyboard(),
     )
 
 
@@ -1110,14 +1181,15 @@ async def upload_group(message: Message):
         return await message.answer("⛔ فقط ادمین‌ها اجازه آپلود دارند.")
     admin_actions.pop(message.from_user.id, None)
     uid = message.from_user.id
+    group_append_tokens.pop(uid, None)
     upload_modes[uid] = "group"
     upload_items[uid] = []
     await message.answer(
         "🟣 <b>آپلود گروهی فعال شد.</b>\n\n"
         "فایل‌ها را یکی‌یکی بفرست.\n"
-        "در پایان /done را بزن.\n\n"
-        "لغو: /cancel",
+        "وقتی تمام شد روی «✅ پایان» بزن.",
         parse_mode="HTML",
+        reply_markup=upload_control_keyboard(),
     )
 
 
@@ -1127,6 +1199,21 @@ async def upload_group(message: Message):
 async def media_upload_handler(message: Message):
     uid = message.from_user.id
     register_user(uid, message.from_user.username, message.from_user.first_name)
+
+    # Broadcast must be checked before upload mode so videos, stickers, photos,
+    # documents and audio are copied to users instead of being treated as uploads.
+    if is_admin(uid) and admin_actions.get(uid) == "broadcast":
+        async with broadcast_lock:
+            admin_actions.pop(uid, None)
+            status = await message.answer("📣 ارسال همگانی شروع شد...\nلطفاً چند لحظه صبر کن.")
+            sent, failed = await broadcast_message(message)
+            await status.edit_text(
+                f"📣 <b>ارسال همگانی تمام شد.</b>\n\n"
+                f"✅ موفق: {sent}\n"
+                f"❌ ناموفق: {failed}",
+                parse_mode="HTML",
+            )
+        return
 
     if is_blocked(uid):
         return await message.answer("🚫 دسترسی شما مسدود است.")
@@ -1305,61 +1392,91 @@ async def dashboard_home_callback(callback: CallbackQuery):
     await callback.answer()
 
 
+@dp.message(F.text == "❌ انصراف")
+async def upload_cancel_button(message: Message):
+    uid = message.from_user.id
+    if not is_admin(uid):
+        return
+    clear_user_state(uid)
+    await message.answer("❌ عملیات لغو شد.", reply_markup=settings_keyboard() if is_admin(uid) else None)
+
+
+@dp.message(F.text == "✅ پایان")
+async def upload_finish_button(message: Message):
+    uid = message.from_user.id
+    if not is_admin(uid):
+        return
+    mode = upload_modes.get(uid)
+    if mode == "single":
+        clear_user_state(uid)
+        return await message.answer("❌ آپلود لغو شد.", reply_markup=main_keyboard())
+    if mode not in ("group", "group_append"):
+        clear_user_state(uid)
+        return await message.answer("ℹ️ عملیات آپلود فعالی نداری.", reply_markup=main_keyboard())
+    items = upload_items.get(uid, [])
+    if not items:
+        return await message.answer("❌ هنوز هیچ فایلی اضافه نکردی.", reply_markup=upload_control_keyboard())
+    await finalize_group_upload(message)
+
+
+async def finalize_group_upload(message: Message):
+    uid = message.from_user.id
+    items = upload_items.get(uid, [])
+    mode = upload_modes.get(uid)
+    if not items or mode not in ("group", "group_append"):
+        return await message.answer("❌ موردی برای تکمیل وجود ندارد.", reply_markup=main_keyboard())
+    try:
+        if mode == "group_append":
+            target_token = group_append_tokens.get(uid)
+            ok, result = append_group_items(uid, target_token, items)
+            if not ok:
+                return await message.answer(f"❌ {escape(result)}", parse_mode="HTML")
+            clear_user_state(uid)
+            username = await bot_username()
+            bot_url = tg_link(username, "group", target_token)
+            web_url = f"{BASE_URL}/g/{quote(target_token)}"
+            return await message.answer(
+                "✅ <b>فایل‌ها به مجموعه قبلی اضافه شدند.</b>\n\n"
+                f"📁 تعداد فایل‌های اضافه‌شده: <b>{len(items)}</b>\n"
+                f"🔗 لینک ربات: <code>{escape(bot_url)}</code>",
+                parse_mode="HTML", disable_web_page_preview=True,
+                reply_markup=main_keyboard(),
+            )
+        token = create_group(uid, "مجموعه فایل", items)
+        username = await bot_username()
+        bot_url = tg_link(username, "group", token)
+        web_url = f"{BASE_URL}/g/{token}"
+        total_size = sum(int(item.get("file_size") or 0) for item in items)
+        clear_user_state(uid)
+        return await message.answer(
+            "📦 <b>آپلود گروهی با موفقیت انجام شد!</b>\n\n"
+            f"📁 تعداد آیتم‌ها: <b>{len(items)}</b>\n"
+            f"💾 حجم کل: <b>{fmt_size(total_size)}</b>\n"
+            f"🔐 شناسه: <code>{escape(token)}</code>\n"
+            f"🔗 لینک: <code>{escape(bot_url)}</code>",
+            parse_mode="HTML", disable_web_page_preview=True,
+            reply_markup=main_keyboard(),
+        )
+    except Exception as e:
+        return await message.answer(f"❌ تکمیل آپلود انجام نشد.\n\n<code>{escape(str(e))}</code>", parse_mode="HTML")
+
+
 # =========================================================
 # DONE / CANCEL
 # =========================================================
 
 @dp.message(Command("done"))
 async def done_handler(message: Message):
-    uid = message.from_user.id
-    if not is_admin(uid):
-        return await message.answer("⛔ فقط ادمین‌ها می‌توانند آپلود گروهی انجام دهند.")
-    if upload_modes.get(uid) != "group":
-        return await message.answer(
-            "ℹ️ آپلود گروهی فعالی نداری.",
-            reply_markup=main_keyboard(),
-        )
-
-    items = upload_items.get(uid, [])
-    if not items:
-        return await message.answer("❌ هنوز هیچ فایلی اضافه نکردی.")
-
-    try:
-        token = create_group(uid, "مجموعه فایل", items)
-        username = await bot_username()
-        bot_url = tg_link(username, "group", token)
-        web_url = f"{BASE_URL}/g/{token}"
-        count = len(items)
-        clear_user_state(uid)
-
-        share_url = f"https://t.me/share/url?url={quote(bot_url, safe='')}"
-        total_size = sum(int(item.get("file_size") or 0) for item in items)
-        await message.answer(
-            "╭─────── 📦 ───────╮\n"
-            "│  <b>آپلود گروهی با موفقیت انجام شد!</b>  │\n"
-            "╰──────────────────╯\n\n"
-            "📦 <b>مجموعه فایل‌ها</b>\n"
-            f"📁 تعداد آیتم‌ها: <b>{count}</b>\n"
-            f"💾 حجم کل: <b>{fmt_size(total_size)}</b>\n"
-            f"🔐 شناسه: <code>{escape(token)}</code>\n"
-            f"🔗 لینک اشتراک‌گذاری:\n<code>{escape(bot_url)}</code>\n\n"
-            "یکی از گزینه‌های زیر را انتخاب کن:",
-            parse_mode="HTML",
-            disable_web_page_preview=True,
-            reply_markup=group_success_keyboard(bot_url, web_url, token),
-        )
-    except Exception as e:
-        print("GROUP CREATE ERROR:", repr(e))
-        await message.answer(
-            f"❌ ساخت مجموعه انجام نشد.\n\n<code>{escape(str(e))}</code>",
-            parse_mode="HTML",
-        )
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ فقط ادمین‌ها اجازه دارند.")
+    await upload_finish_button(message)
 
 
 @dp.message(Command("cancel"))
 async def cancel(message: Message):
-    clear_user_state(message.from_user.id)
-    await message.answer("❌ عملیات لغو شد.", reply_markup=main_keyboard())
+    uid = message.from_user.id
+    clear_user_state(uid)
+    await message.answer("❌ عملیات لغو شد.", reply_markup=settings_keyboard() if is_admin(uid) else None)
 
 
 # =========================================================
@@ -1703,7 +1820,27 @@ async def remove_admin_start(message: Message):
     await message.answer("➖ آیدی عددی ادمین را بفرست.\nلغو: /cancel")
 
 
-@dp.message(F.text == "📣 ارسال پیام همگانی")
+@dp.message(F.text == "🚫 مسدود کردن کاربر")
+async def block_user_start(message: Message):
+    uid = message.from_user.id
+    if not is_admin(uid):
+        return await message.answer("⛔ دسترسی ندارید.")
+    admin_actions[uid] = "block_user"
+    upload_modes.pop(uid, None); upload_items.pop(uid, None)
+    await message.answer("🚫 آیدی عددی کاربر را بفرست.\nلغو: «❌ انصراف»")
+
+
+@dp.message(F.text == "✅ رفع مسدودی کاربر")
+async def unblock_user_start(message: Message):
+    uid = message.from_user.id
+    if not is_admin(uid):
+        return await message.answer("⛔ دسترسی ندارید.")
+    admin_actions[uid] = "unblock_user"
+    upload_modes.pop(uid, None); upload_items.pop(uid, None)
+    await message.answer("✅ آیدی عددی کاربر را بفرست.\nلغو: «❌ انصراف»")
+
+
+@dp.message(F.text.in_({"📣 ارسال پیام همگانی", "📣 پیام همگانی"}))
 async def broadcast_start(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ دسترسی ندارید.")
@@ -1713,7 +1850,8 @@ async def broadcast_start(message: Message):
     await message.answer(
         "📣 پیام، عکس، ویدیو، فایل یا متن موردنظر را در پیام بعدی بفرست.\n\n"
         "پیام برای کاربران ثبت‌شده ارسال می‌شود.\n"
-        "لغو: /cancel"
+        "متن، عکس، ویدیو، استیکر، فایل، صدا یا هر پیام پشتیبانی‌شده را بفرست.\n"
+        "لغو: «❌ انصراف»"
     )
 
 
@@ -1862,7 +2000,7 @@ async def help_command(message: Message):
 async def broadcast_message(source: Message):
     c = db()
     user_ids = [r["user_id"] for r in c.execute(
-        "SELECT user_id FROM users ORDER BY user_id"
+        "SELECT u.user_id FROM users u LEFT JOIN blocked_users b ON b.user_id=u.user_id WHERE b.user_id IS NULL ORDER BY u.user_id"
     ).fetchall()]
     c.close()
 
@@ -1878,9 +2016,24 @@ async def broadcast_message(source: Message):
             )
             sent += 1
         except Exception as e:
-            failed += 1
-            print("BROADCAST ERROR", uid, repr(e))
-        await asyncio.sleep(0.04)
+            # aiogram exposes Telegram retry information as retry_after on RetryAfter.
+            retry_after = getattr(e, "retry_after", None)
+            if retry_after is not None:
+                try:
+                    await asyncio.sleep(float(retry_after) + 0.5)
+                    await bot.copy_message(
+                        chat_id=uid,
+                        from_chat_id=source.chat.id,
+                        message_id=source.message_id,
+                    )
+                    sent += 1
+                except Exception as retry_error:
+                    failed += 1
+                    print("BROADCAST RETRY ERROR", uid, repr(retry_error))
+            else:
+                failed += 1
+                print("BROADCAST ERROR", uid, repr(e))
+        await asyncio.sleep(0.10)
 
     return sent, failed
 
@@ -1894,6 +2047,7 @@ MENU_TEXTS = {
     "📣 ارسال پیام همگانی", "🔴 خاموش کردن ربات", "🟢 روشن کردن ربات",
     "⚙️ تنظیمات", "👤 حساب من", "👥 لیست کاربران", "🚫 لیست مسدودها",
     "👑 لیست ادمین‌ها", "➕ افزودن ادمین", "➖ حذف ادمین", "🔐 عضویت اجباری",
+    "🚫 مسدود کردن کاربر", "✅ رفع مسدودی کاربر", "❌ انصراف", "✅ پایان",
     "📊 آمار کلی", "📁 تنظیمات فایل‌ها", "🌐 تغییر زبان", "📣 پیام همگانی",
     "📦 کانال ذخیره‌سازی", "🌐 تنظیمات لینک وب", "🏠 بازگشت به منوی اصلی",
     "🏠 منوی اصلی", "🔙 منوی اصلی", "🔙 بازگشت به تنظیمات", "🇮🇷 فارسی",
@@ -2043,6 +2197,17 @@ async def handle_admin_action_input(message: Message, action: str):
             reply_markup=settings_keyboard(),
         )
 
+    if action in ("block_user", "unblock_user"):
+        if not raw.isdigit():
+            return await message.answer("❌ فقط آیدی عددی بفرست.")
+        target = int(raw)
+        if action == "block_user":
+            ok, text = block_user(target, uid)
+        else:
+            ok, text = unblock_user(target)
+        admin_actions.pop(uid, None)
+        return await message.answer(("✅ " if ok else "❌ ") + text, reply_markup=settings_keyboard())
+
     if action == "broadcast":
         async with broadcast_lock:
             admin_actions.pop(uid, None)
@@ -2099,6 +2264,15 @@ async def _telegram_file_bytes(file_id):
     return url, timeout
 
 
+def content_disposition(filename, inline=True):
+    # RFC 5987 keeps Persian/Unicode filenames intact while avoiding header injection.
+    safe = Path(str(filename or "file")).name.replace("\r", "").replace("\n", "")
+    ascii_name = "".join(ch if 32 <= ord(ch) < 127 and ch not in '\"' else "_" for ch in safe) or "file"
+    encoded = quote(safe, safe="")
+    mode = "inline" if inline else "attachment"
+    return f"{mode}; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
+
+
 async def telegram_media_response(request, file_id, filename="file", inline=True):
     if not file_id:
         return web.Response(text="File unavailable", status=404)
@@ -2106,9 +2280,9 @@ async def telegram_media_response(request, file_id, filename="file", inline=True
         url, timeout = await _telegram_file_bytes(file_id)
         headers = {}
         if inline:
-            headers["Content-Disposition"] = f'inline; filename="{quote(filename)}"'
+            headers["Content-Disposition"] = content_disposition(filename, inline=True)
         else:
-            headers["Content-Disposition"] = f'attachment; filename="{quote(filename)}"'
+            headers["Content-Disposition"] = content_disposition(filename, inline=False)
 
         async with ClientSession(timeout=timeout) as http:
             async with http.get(url, proxy=PROXY_URL or None) as resp:
@@ -2287,9 +2461,7 @@ async def download_file(request):
         # where Telegram's file endpoint is reachable only through the proxy.
         timeout = ClientTimeout(total=None, sock_connect=30, sock_read=120)
         headers = {
-            "Content-Disposition": (
-                f'attachment; filename="{quote(row["file_name"] or "file")}"'
-            )
+            "Content-Disposition": content_disposition(row["file_name"] or "file", inline=False)
         }
 
         async with ClientSession(timeout=timeout) as http:
@@ -2376,7 +2548,12 @@ async def global_error_handler(event):
 # =========================================================
 
 async def main():
-    init_db()
+    try:
+        init_db()
+    except sqlite3.OperationalError as e:
+        raise RuntimeError(
+            f"SQLite could not open DB at {DB_PATH}. Check Railway Volume mount (/data) and DB_PATH. Original error: {e}"
+        ) from e
 
     print("=" * 55)
     print("🤖 Telegram Uploader - REBUILT")
