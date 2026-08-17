@@ -726,17 +726,32 @@ def group_success_keyboard(bot_url, web_url, token):
 def settings_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [styled_button("👥 لیست کاربران", "primary"), styled_button("🚫 لیست مسدودها", "danger")],
-            [styled_button("🚫 مسدود کردن کاربر", "danger"), styled_button("✅ رفع مسدودی کاربر", "success")],
-            [styled_button("👑 لیست ادمین‌ها", "primary"), styled_button("➕ افزودن ادمین", "success")],
-            [styled_button("➖ حذف ادمین", "danger"), styled_button("🔐 عضویت اجباری", "primary")],
-            [styled_button("📊 آمار کلی", "primary"), styled_button("📁 تنظیمات فایل‌ها", "primary")],
-            [styled_button("🌐 تغییر زبان", "primary"), styled_button("📣 پیام همگانی", "success")],
+            [styled_button("👥 لیست کاربران", "primary")],
+            [styled_button("🚫 مدیریت مسدودی", "danger"), styled_button("👑 مدیریت ادمین‌ها", "primary")],
+            [styled_button("🔐 عضویت اجباری", "primary"), styled_button("📊 آمار کلی", "primary")],
+            [styled_button("📁 تنظیمات فایل‌ها", "primary"), styled_button("🌐 تغییر زبان", "primary")],
+            [styled_button("📣 پیام همگانی", "success")],
             [styled_button("🏠 بازگشت به منوی اصلی", "primary")],
         ],
         resize_keyboard=True,
         is_persistent=True,
     )
+
+def block_manage_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [styled_button("🚫 مسدود کردن کاربر", "danger"), styled_button("✅ رفع مسدودی کاربر", "success")],
+            [styled_button("📋 لیست مسدودها", "primary")],
+            [styled_button("🔙 بازگشت به تنظیمات", "primary")],
+        ], resize_keyboard=True)
+
+def admin_manage_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [styled_button("➕ افزودن ادمین", "success"), styled_button("➖ حذف ادمین", "danger")],
+            [styled_button("👑 لیست ادمین‌ها", "primary")],
+            [styled_button("🔙 بازگشت به تنظیمات", "primary")],
+        ], resize_keyboard=True)
 
 
 def file_settings_keyboard():
@@ -874,7 +889,7 @@ def extract_item(message: Message):
     if message.text and not message.text.startswith("/"):
         return {
             "file_id": None,
-            "file_name": "text.txt",
+            "file_name": "متن",
             "file_size": len(message.text.encode("utf-8")),
             "file_type": "text",
             "text_content": message.text,
@@ -890,7 +905,6 @@ async def send_item(chat_id, item):
     if t == "text":
         return await bot.send_message(
             chat_id,
-            f"📄 <b>{escape(item['file_name'] or 'متن')}</b>\n\n"
             f"{escape(item['text_content'] or '')}",
             parse_mode="HTML",
         )
@@ -936,7 +950,7 @@ async def process_upload(message: Message):
             f"📁 {escape(item['file_name'] or 'file')}\n"
             f"💾 {fmt_size(item['file_size'])}\n\n"
             "📤 فایل بعدی را بفرست.\n"
-            "وقتی تمام شد /done را بزن.",
+            "وقتی تمام شد روی «✅ پایان» بزن.",
             parse_mode="HTML",
         )
 
@@ -953,7 +967,7 @@ async def process_upload(message: Message):
             f"📁 {escape(item['file_name'] or 'file')}\n"
             f"💾 {fmt_size(item['file_size'])}\n\n"
             "📤 فایل بعدی را بفرست.\n"
-            "وقتی تمام شد /done را بزن.",
+            "وقتی تمام شد روی «✅ پایان» بزن.",
             parse_mode="HTML",
         )
 
@@ -1436,11 +1450,14 @@ async def finalize_group_upload(message: Message):
             bot_url = tg_link(username, "group", target_token)
             web_url = f"{BASE_URL}/g/{quote(target_token)}"
             return await message.answer(
-                "✅ <b>فایل‌ها به مجموعه قبلی اضافه شدند.</b>\n\n"
+                "╭─────── ✨ ───────╮\n"
+                "│  <b>افزودن به مجموعه با موفقیت انجام شد!</b>  │\n"
+                "╰──────────────────╯\n\n"
                 f"📁 تعداد فایل‌های اضافه‌شده: <b>{len(items)}</b>\n"
-                f"🔗 لینک ربات: <code>{escape(bot_url)}</code>",
+                f"🔗 لینک اشتراک‌گذاری:\n<code>{escape(bot_url)}</code>\n\n"
+                "یکی از گزینه‌های زیر را انتخاب کن:",
                 parse_mode="HTML", disable_web_page_preview=True,
-                reply_markup=main_keyboard(),
+                reply_markup=group_success_keyboard(bot_url, web_url, target_token),
             )
         token = create_group(uid, "مجموعه فایل", items)
         username = await bot_username()
@@ -1449,13 +1466,16 @@ async def finalize_group_upload(message: Message):
         total_size = sum(int(item.get("file_size") or 0) for item in items)
         clear_user_state(uid)
         return await message.answer(
-            "📦 <b>آپلود گروهی با موفقیت انجام شد!</b>\n\n"
+            "╭─────── ✨ ───────╮\n"
+            "│  <b>آپلود گروهی با موفقیت انجام شد!</b>  │\n"
+            "╰──────────────────╯\n\n"
             f"📁 تعداد آیتم‌ها: <b>{len(items)}</b>\n"
             f"💾 حجم کل: <b>{fmt_size(total_size)}</b>\n"
             f"🔐 شناسه: <code>{escape(token)}</code>\n"
-            f"🔗 لینک: <code>{escape(bot_url)}</code>",
+            f"🔗 لینک اشتراک‌گذاری:\n<code>{escape(bot_url)}</code>\n\n"
+            "یکی از گزینه‌های زیر را انتخاب کن:",
             parse_mode="HTML", disable_web_page_preview=True,
-            reply_markup=main_keyboard(),
+            reply_markup=group_success_keyboard(bot_url, web_url, token),
         )
     except Exception as e:
         return await message.answer(f"❌ تکمیل آپلود انجام نشد.\n\n<code>{escape(str(e))}</code>", parse_mode="HTML")
@@ -1820,6 +1840,18 @@ async def remove_admin_start(message: Message):
     await message.answer("➖ آیدی عددی ادمین را بفرست.\nلغو: /cancel")
 
 
+@dp.message(F.text == "🚫 مدیریت مسدودی")
+async def block_management(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    await message.answer("🚫 <b>مدیریت مسدودی کاربران</b>", parse_mode="HTML", reply_markup=block_manage_keyboard())
+
+@dp.message(F.text == "👑 مدیریت ادمین‌ها")
+async def admin_management(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    await message.answer("👑 <b>مدیریت ادمین‌ها</b>", parse_mode="HTML", reply_markup=admin_manage_keyboard())
+
 @dp.message(F.text == "🚫 مسدود کردن کاربر")
 async def block_user_start(message: Message):
     uid = message.from_user.id
@@ -2047,7 +2079,7 @@ MENU_TEXTS = {
     "📣 ارسال پیام همگانی", "🔴 خاموش کردن ربات", "🟢 روشن کردن ربات",
     "⚙️ تنظیمات", "👤 حساب من", "👥 لیست کاربران", "🚫 لیست مسدودها",
     "👑 لیست ادمین‌ها", "➕ افزودن ادمین", "➖ حذف ادمین", "🔐 عضویت اجباری",
-    "🚫 مسدود کردن کاربر", "✅ رفع مسدودی کاربر", "❌ انصراف", "✅ پایان",
+    "🚫 مدیریت مسدودی", "👑 مدیریت ادمین‌ها", "🚫 مسدود کردن کاربر", "✅ رفع مسدودی کاربر", "❌ انصراف", "✅ پایان",
     "📊 آمار کلی", "📁 تنظیمات فایل‌ها", "🌐 تغییر زبان", "📣 پیام همگانی",
     "📦 کانال ذخیره‌سازی", "🌐 تنظیمات لینک وب", "🏠 بازگشت به منوی اصلی",
     "🏠 منوی اصلی", "🔙 منوی اصلی", "🔙 بازگشت به تنظیمات", "🇮🇷 فارسی",
@@ -2074,6 +2106,13 @@ async def text_router(message: Message):
         return
 
     # Menu messages have dedicated handlers.
+    if message.text == "🇮🇷 فارسی":
+        await set_language(uid, "fa")
+        return await message.answer("✅ فارسی فعال شد.", reply_markup=settings_keyboard())
+    if message.text == "🇬🇧 English":
+        await set_language(uid, "en")
+        return await message.answer("✅ English enabled.", reply_markup=settings_keyboard())
+
     if message.text in MENU_TEXTS:
         return
 
