@@ -2,7 +2,6 @@ import asyncio
 import os
 import secrets
 import sqlite3
-from contextlib import suppress
 from pathlib import Path
 from html import escape
 from urllib.parse import quote
@@ -12,7 +11,6 @@ from aiohttp import web, ClientSession, ClientTimeout
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.types import (
     Message, CallbackQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
@@ -634,32 +632,11 @@ def L(uid, key):
     return LANGUAGES[user_lang(uid)][key]
 
 def localized_label_map():
-    m = {}
-    keys = {
-        "upload":"upload", "group":"group", "files":"files", "broadcast":"broadcast",
-        "toggle_on":"toggle_on", "toggle_off":"toggle_off", "settings":"settings",
-        "back":"back", "lang":"lang", "admins":"admins", "blocks":"blocks",
-        "start_view":"start_view", "users":"users", "blocked_list":"blocked_list",
-        "admin_list":"admin_list", "add_admin":"add_admin", "remove_admin":"remove_admin",
-        "force":"force", "stats":"stats", "file_settings":"file_settings",
-    }
+    m={}
+    keys={"upload":"upload","group":"group","files":"files","broadcast":"broadcast","toggle_on":"toggle_on","toggle_off":"toggle_off","settings":"settings","back":"back","lang":"lang","admins":"admins","blocks":"blocks","start_view":"start_view","users":"users","blocked_list":"blocked_list","admin_list":"admin_list","add_admin":"add_admin","remove_admin":"remove_admin","force":"force","stats":"stats","file_settings":"file_settings"}
     for d in LANGUAGES.values():
         for key, canonical in keys.items():
-            m[d[key]] = canonical
-
-    # Static submenu buttons. These are kept compatible even when the main
-    # menu language has changed, so an old keyboard cannot become dead.
-    extra = {
-        "❌ انصراف":"cancel_upload", "✅ پایان":"finish_group",
-        "🔙 بازگشت به تنظیمات":"back_settings", "🏠 منوی اصلی":"back_main",
-        "🏠 بازگشت به منوی اصلی":"back_main", "🔙 منوی اصلی":"back_main",
-        "➕ مسدود کردن کاربر":"block_user", "➖ رفع مسدودی":"unblock_user",
-        "📋 لیست مسدودها":"blocked_list", "👑 لیست ادمین‌ها":"admin_list",
-        "➕ افزودن ادمین":"add_admin", "➖ حذف ادمین":"remove_admin",
-        "📣 پیام همگانی":"broadcast",
-    }
-    for label, action in extra.items():
-        m[label] = action
+            m[d[key]]=canonical
     return m
 
 
@@ -679,8 +656,7 @@ def upload_success_keyboard(bot_url, web_url, token):
     share_url=f"https://t.me/share/url?url={quote(bot_url,safe='')}"
     return InlineKeyboardMarkup(inline_keyboard=[
         [styled_inline_button("📁 مشاهده فایل‌ها",style="primary",callback_data="ui_files"),styled_inline_button("➕ افزودن فایل",style="success",callback_data="ui_upload")],
-        [styled_inline_button("🌐 لینک وب",style="primary",url=web_url)],
-        [styled_inline_button("🤖 دریافت در ربات",style="primary",url=bot_url)],
+        [styled_inline_button("🤖 دریافت در ربات",style="primary",url=bot_url),styled_inline_button("🌐 لینک وب",style="primary",url=web_url)],
         [styled_inline_button("📤 اشتراک‌گذاری",style="primary",url=share_url)],
         [styled_inline_button("✏️ ویرایش نام",style="primary",callback_data=f"rename_file:{token}"),styled_inline_button("🗑 حذف فایل",style="danger",callback_data=f"delete_file:{token}")],
     ])
@@ -690,8 +666,7 @@ def group_success_keyboard(bot_url, web_url, token):
     share_url=f"https://t.me/share/url?url={quote(bot_url,safe='')}"
     return InlineKeyboardMarkup(inline_keyboard=[
         [styled_inline_button("📁 مشاهده فایل‌ها",style="primary",callback_data="ui_files"),styled_inline_button("➕ افزودن فایل",style="success",callback_data=f"group_add:{token}")],
-        [styled_inline_button("🌐 لینک وب",style="primary",url=web_url)],
-        [styled_inline_button("🤖 دریافت در ربات",style="primary",url=bot_url)],
+        [styled_inline_button("🤖 دریافت در ربات",style="primary",url=bot_url),styled_inline_button("🌐 لینک وب",style="primary",url=web_url)],
         [styled_inline_button("📤 اشتراک‌گذاری",style="primary",url=share_url)],
         [styled_inline_button("🗑 حذف مجموعه",style="danger",callback_data=f"delete_group:{token}")],
     ])
@@ -711,7 +686,7 @@ def settings_keyboard(uid=None):
             [styled_button(d["admins"],"primary"), styled_button(d["blocks"],"danger")],
             [styled_button(d["users"],"primary"), styled_button(d["force"],"primary")],
             [styled_button(d["stats"],"primary"), styled_button(d["file_settings"],"primary")],
-            [styled_button(d["lang"],"primary"), styled_button(d["broadcast"],"success")],
+            [styled_button(d["broadcast"],"success")],
             [styled_button(d["start_view"],"primary")],
             [styled_button(d["back"],"primary")],
         ],
@@ -855,7 +830,7 @@ def extract_item(message: Message):
     if message.text and not message.text.startswith("/"):
         return {
             "file_id": None,
-            "file_name": "text.txt",
+            "file_name": "متن",
             "file_size": len(message.text.encode("utf-8")),
             "file_type": "text",
             "text_content": message.text,
@@ -871,8 +846,7 @@ async def send_item(chat_id, item):
     if t == "text":
         return await bot.send_message(
             chat_id,
-            f"📄 <b>{escape(item['file_name'] or 'متن')}</b>\n\n"
-            f"{escape(item['text_content'] or '')}",
+            escape(item.get("text_content") or ""),
             parse_mode="HTML",
         )
     if t == "document":
@@ -938,7 +912,7 @@ async def process_upload(message: Message):
                 f"📄 <b>{escape(item['file_name'] or 'file')}</b>\n"
                 f"💾 حجم: <b>{fmt_size(item['file_size'])}</b>\n"
                 f"🔐 شناسه: <code>{escape(token)}</code>\n"
-                f"🔗 لینک اشتراک‌گذاری:\n<code>{escape(bot_url)}</code>\n\n"
+                f"🔗 <a href=\"{escape(bot_url)}\">لینک دریافت فایل</a>\n\n"
                 "یکی از گزینه‌های زیر را انتخاب کن:",
                 parse_mode="HTML",
                 disable_web_page_preview=True,
@@ -1363,7 +1337,7 @@ async def finalize_group(message: Message):
     try:
         token=create_group(uid,"مجموعه فایل",items); username=await bot_username(); bot_url=tg_link(username,"group",token); web_url=f"{BASE_URL}/g/{token}"
         count=len(items); total_size=sum(int(x.get("file_size") or 0) for x in items); clear_user_state(uid)
-        await message.answer("📦 <b>آپلود گروهی با موفقیت انجام شد!</b>\n\n"+f"📁 تعداد آیتم‌ها: <b>{count}</b>\n💾 حجم کل: <b>{fmt_size(total_size)}</b>\n🔐 شناسه: <code>{escape(token)}</code>\n\nیکی از گزینه‌ها را انتخاب کن:",parse_mode="HTML",disable_web_page_preview=True,reply_markup=group_success_keyboard(bot_url,web_url,token))
+        await message.answer("📦 <b>آپلود گروهی با موفقیت انجام شد!</b>\n\n"+f"📁 تعداد آیتم‌ها: <b>{count}</b>\n💾 حجم کل: <b>{fmt_size(total_size)}</b>\n🔐 شناسه: <code>{escape(token)}</code>\n🔗 <a href=\"{escape(bot_url)}\">لینک دریافت مجموعه</a>\n\nیکی از گزینه‌ها را انتخاب کن:",parse_mode="HTML",disable_web_page_preview=True,reply_markup=group_success_keyboard(bot_url,web_url,token))
         await message.answer("🏠",reply_markup=main_keyboard(uid))
     except Exception as e:
         print("GROUP CREATE ERROR:",repr(e)); await message.answer(f"❌ ساخت مجموعه انجام نشد.\n<code>{escape(str(e))}</code>",parse_mode="HTML")
@@ -1783,27 +1757,15 @@ async def broadcast_start(message: Message):
 
 
 # =========================================================
-# START PREVIEW
-# =========================================================
-
-async def start_preview(message: Message):
-    if not is_admin(message.from_user.id):
-        return await message.answer("⛔ دسترسی ندارید.")
-    text = setting("start_text", "🌟 بات جستجوی حرفه‌ای 🌟")
-    await message.answer(
-        "👀 <b>پیش‌نمایش پیام Start برای کاربر</b>\n\n" + text,
-        parse_mode="HTML",
-        reply_markup=settings_keyboard(message.from_user.id),
-    )
-
-
-# =========================================================
 # LANGUAGE
 # =========================================================
 
+@dp.message(F.text)
 async def language_entry(message: Message):
+    # This handler is intentionally placed before the generic text router.
+    # It accepts the localized language button in every supported language.
     if message.text not in {d["lang"] for d in LANGUAGES.values()}:
-        raise SkipHandler
+        return
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ دسترسی ندارید.")
 
@@ -1823,28 +1785,26 @@ async def language_entry(message: Message):
 
 @dp.callback_query(F.data.startswith("setlang:"))
 async def set_language_callback(callback: CallbackQuery):
-    uid = callback.from_user.id
+    uid=callback.from_user.id
     if not is_admin(uid):
-        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
-        return
+        return await callback.answer("⛔ دسترسی ندارید.",show_alert=True)
 
-    code = callback.data.partition(":")[2].strip()
+    code=callback.data.partition(":")[2].strip()
     if code not in LANGUAGES:
-        await callback.answer("❌ زبان نامعتبر است.", show_alert=True)
-        return
+        return await callback.answer("❌ زبان نامعتبر است.",show_alert=True)
 
-    set_language(uid, code)
+    await set_language(uid,code)
     await callback.answer(f"✅ {LANGUAGES[code]['name']}")
 
-    # Delete the language picker safely. Never let an exception here stop
-    # the callback from rebuilding the keyboard.
-    try:
+    # Replace the old language picker and immediately show the newly
+    # localized settings menu. This also prevents the old mixed-language
+    # reply keyboard from remaining visible.
+    with suppress(Exception):
         await callback.message.delete()
-    except Exception:
-        pass
 
-    await callback.message.answer(
-        f"✅ {LANGUAGES[code]['name']} فعال شد.",
+    await callback.bot.send_message(
+        chat_id=uid,
+        text=f"✅ {LANGUAGES[code]['name']} فعال شد.",
         reply_markup=settings_keyboard(uid),
     )
 
@@ -1981,7 +1941,7 @@ MENU_TEXTS = {
     "📣 ارسال پیام همگانی", "🔴 خاموش کردن ربات", "🟢 روشن کردن ربات",
     "⚙️ تنظیمات", "👤 حساب من", "👥 لیست کاربران", "🚫 لیست مسدودها",
     "👑 لیست ادمین‌ها", "➕ افزودن ادمین", "➖ حذف ادمین", "🔐 عضویت اجباری",
-    "📊 آمار کلی", "📁 تنظیمات فایل‌ها", "🌐 تغییر زبان", "📣 پیام همگانی",
+    "📊 آمار کلی", "📁 تنظیمات فایل‌ها", "📣 پیام همگانی",
     "📦 کانال ذخیره‌سازی", "🌐 تنظیمات لینک وب", "🏠 بازگشت به منوی اصلی",
     "🏠 منوی اصلی", "🔙 منوی اصلی", "🔙 بازگشت به تنظیمات", "🇮🇷 فارسی",
     "🇬🇧 English", "➕ افزودن کانال", "🗑 حذف کانال", "📋 لیست کانال‌ها",
@@ -2015,7 +1975,7 @@ async def text_router(message: Message):
         if canonical=="files": return await my_files(message)
         if canonical=="broadcast": return await broadcast_start(message)
         if canonical=="settings": return await settings_handler(message)
-        if canonical=="lang": return await language_entry(message)
+        if canonical=="lang": return await language(message)
         if canonical=="admins": return await admin_manage(message)
         if canonical=="blocks": return await block_manage(message)
         if canonical=="start_view": return await start_preview(message)
@@ -2029,14 +1989,6 @@ async def text_router(message: Message):
         if canonical=="file_settings": return await file_settings(message)
         if canonical=="back": return await back_main(message)
         if canonical=="toggle_on" or canonical=="toggle_off": return await toggle_bot(message)
-        if canonical=="finish_group": return await finalize_group(message)
-        if canonical=="cancel_upload":
-            clear_user_state(uid)
-            return await message.answer("❌ آپلود لغو شد.", reply_markup=main_keyboard(uid))
-        if canonical=="back_settings": return await back_settings(message)
-        if canonical=="back_main": return await back_main(message)
-        if canonical=="block_user": return await block_start(message)
-        if canonical=="unblock_user": return await unblock_start(message)
 
 
     action = admin_actions.get(uid)
