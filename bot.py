@@ -616,12 +616,12 @@ def styled_inline_button(text, *, style=None, callback_data=None, url=None):
 
 
 LANGUAGES = {
-    "fa": {"name":"🇮🇷 فارسی", "upload":"⬆️ آپلود فایل", "group":"📂 آپلود گروهی", "files":"📊 مشاهده فایل‌ها و آمار", "broadcast":"📣 ارسال پیام همگانی", "toggle_on":"🔴 خاموش کردن ربات", "toggle_off":"🟢 روشن کردن ربات", "settings":"⚙️ تنظیمات", "back":"🏠 بازگشت به منوی اصلی", "lang":"🌐 تغییر زبان", "admins":"👑 مدیریت ادمین‌ها", "blocks":"🚫 مدیریت مسدودی", "start_view":"👀 مشاهده استارت از دید کاربر"},
-    "en": {"name":"🇬🇧 English", "upload":"⬆️ Upload File", "group":"📂 Group Upload", "files":"📊 Files & Stats", "broadcast":"📣 Broadcast", "toggle_on":"🔴 Disable Bot", "toggle_off":"🟢 Enable Bot", "settings":"⚙️ Settings", "back":"🏠 Back to Main Menu", "lang":"🌐 Change Language", "admins":"👑 Admin Management", "blocks":"🚫 Block Management", "start_view":"👀 Preview Start Message"},
-    "ar": {"name":"🇸🇦 العربية", "upload":"⬆️ رفع ملف", "group":"📂 رفع جماعي", "files":"📊 الملفات والإحصائيات", "broadcast":"📣 إرسال جماعي", "toggle_on":"🔴 إيقاف البوت", "toggle_off":"🟢 تشغيل البوت", "settings":"⚙️ الإعدادات", "back":"🏠 العودة للقائمة الرئيسية", "lang":"🌐 تغيير اللغة", "admins":"👑 إدارة المشرفين", "blocks":"🚫 إدارة الحظر", "start_view":"👀 معاينة رسالة البدء"},
-    "tr": {"name":"🇹🇷 Türkçe", "upload":"⬆️ Dosya Yükle", "group":"📂 Toplu Yükleme", "files":"📊 Dosyalar ve İstatistik", "broadcast":"📣 Toplu Mesaj", "toggle_on":"🔴 Botu Kapat", "toggle_off":"🟢 Botu Aç", "settings":"⚙️ Ayarlar", "back":"🏠 Ana Menüye Dön", "lang":"🌐 Dili Değiştir", "admins":"👑 Yönetici Yönetimi", "blocks":"🚫 Engelleme Yönetimi", "start_view":"👀 Başlangıç Mesajını Önizle"},
-    "ru": {"name":"🇷🇺 Русский", "upload":"⬆️ Загрузить файл", "group":"📂 Групповая загрузка", "files":"📊 Файлы и статистика", "broadcast":"📣 Рассылка", "toggle_on":"🔴 Выключить бота", "toggle_off":"🟢 Включить бота", "settings":"⚙️ Настройки", "back":"🏠 Главное меню", "lang":"🌐 Изменить язык", "admins":"👑 Управление администраторами", "blocks":"🚫 Управление блокировками", "start_view":"👀 Предпросмотр Start"},
-    "de": {"name":"🇩🇪 Deutsch", "upload":"⬆️ Datei hochladen", "group":"📂 Gruppen-Upload", "files":"📊 Dateien & Statistik", "broadcast":"📣 Rundnachricht", "toggle_on":"🔴 Bot ausschalten", "toggle_off":"🟢 Bot einschalten", "settings":"⚙️ Einstellungen", "back":"🏠 Hauptmenü", "lang":"🌐 Sprache ändern", "admins":"👑 Admin-Verwaltung", "blocks":"🚫 Sperrverwaltung", "start_view":"👀 Start-Nachricht ansehen"},
+"fa":{"name":"🇮🇷 فارسی","upload":"⬆️ آپلود فایل","group":"📂 آپلود گروهی","files":"📊 مشاهده فایل‌ها و آمار","broadcast":"📣 ارسال پیام همگانی","toggle_on":"🔴 خاموش کردن ربات","toggle_off":"🟢 روشن کردن ربات","settings":"⚙️ تنظیمات","back":"🏠 بازگشت به منوی اصلی","lang":"🌐 تغییر زبان","admins":"👑 مدیریت ادمین‌ها","blocks":"🚫 مدیریت مسدودی","start_view":"👀 مشاهده استارت از دید کاربر","users":"👥 لیست کاربران","blocked_list":"📋 لیست مسدودها","admin_list":"👑 لیست ادمین‌ها","add_admin":"➕ افزودن ادمین","remove_admin":"➖ حذف ادمین","force":"🔐 عضویت اجباری","stats":"📊 آمار کلی","file_settings":"📁 تنظیمات فایل‌ها"},
+"en":{"name":"🇬🇧 English","upload":"⬆️ Upload File","group":"📂 Group Upload","files":"📊 Files & Stats","broadcast":"📣 Broadcast","toggle_on":"🔴 Disable Bot","toggle_off":"🟢 Enable Bot","settings":"⚙️ Settings","back":"🏠 Back to Main Menu","lang":"🌐 Change Language","admins":"👑 Admin Management","blocks":"🚫 Block Management","start_view":"👀 Preview Start Message","users":"👥 User List","blocked_list":"📋 Blocked List","admin_list":"👑 Admin List","add_admin":"➕ Add Admin","remove_admin":"➖ Remove Admin","force":"🔐 Force Join","stats":"📊 Global Stats","file_settings":"📁 File Settings"},
+"ar":{"name":"🇸🇦 العربية","upload":"⬆️ رفع ملف","group":"📂 رفع جماعي","files":"📊 الملفات والإحصائيات","broadcast":"📣 إرسال جماعي","toggle_on":"🔴 إيقاف البوت","toggle_off":"🟢 تشغيل البوت","settings":"⚙️ الإعدادات","back":"🏠 العودة للقائمة الرئيسية","lang":"🌐 تغيير اللغة","admins":"👑 إدارة المشرفين","blocks":"🚫 إدارة الحظر","start_view":"👀 معاينة رسالة البدء","users":"👥 قائمة المستخدمين","blocked_list":"📋 قائمة المحظورين","admin_list":"👑 قائمة المشرفين","add_admin":"➕ إضافة مشرف","remove_admin":"➖ حذف مشرف","force":"🔐 الاشتراك الإجباري","stats":"📊 الإحصائيات العامة","file_settings":"📁 إعدادات الملفات"},
+"tr":{"name":"🇹🇷 Türkçe","upload":"⬆️ Dosya Yükle","group":"📂 Toplu Yükleme","files":"📊 Dosyalar ve İstatistik","broadcast":"📣 Toplu Mesaj","toggle_on":"🔴 Botu Kapat","toggle_off":"🟢 Botu Aç","settings":"⚙️ Ayarlar","back":"🏠 Ana Menüye Dön","lang":"🌐 Dili Değiştir","admins":"👑 Yönetici Yönetimi","blocks":"🚫 Engelleme Yönetimi","start_view":"👀 Başlangıç Mesajını Önizle","users":"👥 Kullanıcı Listesi","blocked_list":"📋 Engellenenler","admin_list":"👑 Yönetici Listesi","add_admin":"➕ Yönetici Ekle","remove_admin":"➖ Yönetici Sil","force":"🔐 Zorunlu Katılım","stats":"📊 Genel İstatistik","file_settings":"📁 Dosya Ayarları"},
+"ru":{"name":"🇷🇺 Русский","upload":"⬆️ Загрузить файл","group":"📂 Групповая загрузка","files":"📊 Файлы и статистика","broadcast":"📣 Рассылка","toggle_on":"🔴 Выключить бота","toggle_off":"🟢 Включить бота","settings":"⚙️ Настройки","back":"🏠 Главное меню","lang":"🌐 Изменить язык","admins":"👑 Управление администраторами","blocks":"🚫 Управление блокировками","start_view":"👀 Предпросмотр Start","users":"👥 Список пользователей","blocked_list":"📋 Заблокированные","admin_list":"👑 Список админов","add_admin":"➕ Добавить админа","remove_admin":"➖ Удалить админа","force":"🔐 Обязательная подписка","stats":"📊 Общая статистика","file_settings":"📁 Настройки файлов"},
+"de":{"name":"🇩🇪 Deutsch","upload":"⬆️ Datei hochladen","group":"📂 Gruppen-Upload","files":"📊 Dateien & Statistik","broadcast":"📣 Rundsendung","toggle_on":"🔴 Bot ausschalten","toggle_off":"🟢 Bot einschalten","settings":"⚙️ Einstellungen","back":"🏠 Hauptmenü","lang":"🌐 Sprache ändern","admins":"👑 Admin-Verwaltung","blocks":"🚫 Sperrverwaltung","start_view":"👀 Start-Nachricht ansehen","users":"👥 Benutzerliste","blocked_list":"📋 Blockierte","admin_list":"👑 Adminliste","add_admin":"➕ Admin hinzufügen","remove_admin":"➖ Admin entfernen","force":"🔐 Pflichtbeitritt","stats":"📊 Gesamtstatistik","file_settings":"📁 Dateieinstellungen"},
 }
 
 def user_lang(uid):
@@ -633,11 +633,12 @@ def L(uid, key):
 
 def localized_label_map():
     m={}
-    for lang,d in LANGUAGES.items():
-        for k,v in d.items():
-            if k in {"upload","group","files","broadcast","toggle_on","toggle_off","settings","back","lang","admins","blocks","start_view"}:
-                m[v]=k
+    keys={"upload":"upload","group":"group","files":"files","broadcast":"broadcast","toggle_on":"toggle_on","toggle_off":"toggle_off","settings":"settings","back":"back","lang":"lang","admins":"admins","blocks":"blocks","start_view":"start_view","users":"users","blocked_list":"blocked_list","admin_list":"admin_list","add_admin":"add_admin","remove_admin":"remove_admin","force":"force","stats":"stats","file_settings":"file_settings"}
+    for d in LANGUAGES.values():
+        for key, canonical in keys.items():
+            m[d[key]]=canonical
     return m
+
 
 def main_keyboard(uid=None):
     uid = uid or next(iter(ROOT_ADMIN_IDS), 0)
@@ -671,13 +672,20 @@ def group_success_keyboard(bot_url, web_url, token):
     ])
 
 
+def group_upload_keyboard():
+    return ReplyKeyboardMarkup(keyboard=[[styled_button("❌ انصراف","danger"),styled_button("✅ پایان","success")]],resize_keyboard=True,is_persistent=True)
+
+
 def settings_keyboard(uid=None):
     uid=uid or next(iter(ROOT_ADMIN_IDS),0); d=LANGUAGES[user_lang(uid)]
     return ReplyKeyboardMarkup(keyboard=[
-        [styled_button(d["admins"],"primary"),styled_button(d["blocks"],"danger")],
-        [styled_button(d["lang"],"primary"),styled_button(d["start_view"],"primary")],
-        [styled_button("🔐 عضویت اجباری","primary"),styled_button("📊 آمار کلی","primary")],
-        [styled_button("📁 تنظیمات فایل‌ها","primary"),styled_button(d["broadcast"],"success")],
+        [styled_button(d["admins"],"primary"), styled_button(d["blocks"],"danger")],
+        [styled_button(d["users"],"primary"), styled_button(d["admin_list"],"primary")],
+        [styled_button(d["add_admin"],"success"), styled_button(d["remove_admin"],"danger")],
+        [styled_button(d["blocked_list"],"danger"), styled_button(d["force"],"primary")],
+        [styled_button(d["stats"],"primary"), styled_button(d["file_settings"],"primary")],
+        [styled_button(d["lang"],"primary"), styled_button(d["broadcast"],"success")],
+        [styled_button(d["start_view"],"primary")],
         [styled_button(d["back"],"primary")],
     ],resize_keyboard=True,is_persistent=True)
 
@@ -1122,17 +1130,10 @@ async def upload_single(message: Message):
 async def upload_group(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ فقط ادمین‌ها اجازه آپلود دارند.")
-    admin_actions.pop(message.from_user.id, None)
-    uid = message.from_user.id
-    upload_modes[uid] = "group"
-    upload_items[uid] = []
-    await message.answer(
-        "🟣 <b>آپلود گروهی فعال شد.</b>\n\n"
-        "فایل‌ها را یکی‌یکی بفرست.\n"
-        "در پایان /done را بزن.\n\n"
-        "لغو: /cancel",
-        parse_mode="HTML",
-    )
+    admin_actions.pop(message.from_user.id,None)
+    uid=message.from_user.id
+    upload_modes[uid]="group"; upload_items[uid]=[]
+    await message.answer("🟣 <b>آپلود گروهی فعال شد.</b>\n\nفایل‌ها را یکی‌یکی بفرست.\nبعد از اتمام روی «✅ پایان» بزن.\nبرای لغو «❌ انصراف» را بزن.",parse_mode="HTML",reply_markup=group_upload_keyboard())
 
 
 @dp.message(
@@ -1323,57 +1324,35 @@ async def dashboard_home_callback(callback: CallbackQuery):
 # DONE / CANCEL
 # =========================================================
 
+async def finalize_group(message: Message):
+    uid=message.from_user.id
+    if not is_admin(uid): return await message.answer("⛔ فقط ادمین‌ها می‌توانند آپلود گروهی انجام دهند.")
+    if upload_modes.get(uid)!="group": return await message.answer("ℹ️ آپلود گروهی فعالی نداری.",reply_markup=main_keyboard(uid))
+    items=upload_items.get(uid,[])
+    if not items: return await message.answer("❌ هنوز هیچ فایلی اضافه نکردی.",reply_markup=group_upload_keyboard())
+    try:
+        token=create_group(uid,"مجموعه فایل",items); username=await bot_username(); bot_url=tg_link(username,"group",token); web_url=f"{BASE_URL}/g/{token}"
+        count=len(items); total_size=sum(int(x.get("file_size") or 0) for x in items); clear_user_state(uid)
+        await message.answer("📦 <b>آپلود گروهی با موفقیت انجام شد!</b>\n\n"+f"📁 تعداد آیتم‌ها: <b>{count}</b>\n💾 حجم کل: <b>{fmt_size(total_size)}</b>\n🔐 شناسه: <code>{escape(token)}</code>\n\nیکی از گزینه‌ها را انتخاب کن:",parse_mode="HTML",disable_web_page_preview=True,reply_markup=group_success_keyboard(bot_url,web_url,token))
+        await message.answer("🏠",reply_markup=main_keyboard(uid))
+    except Exception as e:
+        print("GROUP CREATE ERROR:",repr(e)); await message.answer(f"❌ ساخت مجموعه انجام نشد.\n<code>{escape(str(e))}</code>",parse_mode="HTML")
+
+@dp.message(F.text == "✅ پایان")
+async def finish_group_button(message: Message):
+    await finalize_group(message)
+
+@dp.message(F.text == "❌ انصراف")
+async def cancel_upload_button(message: Message):
+    clear_user_state(message.from_user.id); await message.answer("❌ آپلود لغو شد.",reply_markup=main_keyboard(message.from_user.id))
+
 @dp.message(Command("done"))
 async def done_handler(message: Message):
-    uid = message.from_user.id
-    if not is_admin(uid):
-        return await message.answer("⛔ فقط ادمین‌ها می‌توانند آپلود گروهی انجام دهند.")
-    if upload_modes.get(uid) != "group":
-        return await message.answer(
-            "ℹ️ آپلود گروهی فعالی نداری.",
-            reply_markup=main_keyboard(),
-        )
-
-    items = upload_items.get(uid, [])
-    if not items:
-        return await message.answer("❌ هنوز هیچ فایلی اضافه نکردی.")
-
-    try:
-        token = create_group(uid, "مجموعه فایل", items)
-        username = await bot_username()
-        bot_url = tg_link(username, "group", token)
-        web_url = f"{BASE_URL}/g/{token}"
-        count = len(items)
-        clear_user_state(uid)
-
-        share_url = f"https://t.me/share/url?url={quote(bot_url, safe='')}"
-        total_size = sum(int(item.get("file_size") or 0) for item in items)
-        await message.answer(
-            "╭─────── 📦 ───────╮\n"
-            "│  <b>آپلود گروهی با موفقیت انجام شد!</b>  │\n"
-            "╰──────────────────╯\n\n"
-            "📦 <b>مجموعه فایل‌ها</b>\n"
-            f"📁 تعداد آیتم‌ها: <b>{count}</b>\n"
-            f"💾 حجم کل: <b>{fmt_size(total_size)}</b>\n"
-            f"🔐 شناسه: <code>{escape(token)}</code>\n"
-            f"🔗 لینک اشتراک‌گذاری:\n<code>{escape(bot_url)}</code>\n\n"
-            "یکی از گزینه‌های زیر را انتخاب کن:",
-            parse_mode="HTML",
-            disable_web_page_preview=True,
-            reply_markup=group_success_keyboard(bot_url, web_url, token),
-        )
-    except Exception as e:
-        print("GROUP CREATE ERROR:", repr(e))
-        await message.answer(
-            f"❌ ساخت مجموعه انجام نشد.\n\n<code>{escape(str(e))}</code>",
-            parse_mode="HTML",
-        )
-
+    await finalize_group(message)
 
 @dp.message(Command("cancel"))
 async def cancel(message: Message):
-    clear_user_state(message.from_user.id)
-    await message.answer("❌ عملیات لغو شد.", reply_markup=main_keyboard())
+    clear_user_state(message.from_user.id); await message.answer("❌ عملیات لغو شد.",reply_markup=main_keyboard(message.from_user.id))
 
 
 # =========================================================
@@ -1777,43 +1756,38 @@ async def broadcast_start(message: Message):
 # LANGUAGE
 # =========================================================
 
-LANGUAGE_NAMES={v["name"]:k for k,v in LANGUAGES.items()}
-
-@dp.message(F.text.in_(set(d["lang"] for d in LANGUAGES.values())))
+@dp.message(F.text.in_({d["lang"] for d in LANGUAGES.values()}))
 async def language(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    kb=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=d["name"],callback_data=f"setlang:{code}") for code,d in list(LANGUAGES.items())[0:2]],
+        [InlineKeyboardButton(text=d["name"],callback_data=f"setlang:{code}") for code,d in list(LANGUAGES.items())[2:4]],
+        [InlineKeyboardButton(text=d["name"],callback_data=f"setlang:{code}") for code,d in list(LANGUAGES.items())[4:6]],
+    ])
+    await message.answer("🌐 <b>انتخاب زبان / Select language</b>",parse_mode="HTML",reply_markup=kb)
+
+@dp.callback_query(F.data.startswith("setlang:"))
+async def set_language_callback(callback: CallbackQuery):
+    uid=callback.from_user.id
+    if not is_admin(uid):
+        return await callback.answer("⛔ دسترسی ندارید.",show_alert=True)
+    code=callback.data.split(":",1)[1]
+    if code not in LANGUAGES:
+        return await callback.answer("❌ زبان نامعتبر است.",show_alert=True)
+    await set_language(uid,code)
+    await callback.answer("✅ زبان تغییر کرد.")
+    await callback.message.edit_text(f"✅ {LANGUAGES[code]['name']} فعال شد.")
+    await callback.message.answer(LANGUAGES[code]["settings"],reply_markup=settings_keyboard(uid))
+
+@dp.message(F.text.in_({d["name"] for d in LANGUAGES.values()}))
+async def choose_language_legacy(message: Message):
+    # Backward-compatible with old reply keyboards.
     if not is_admin(message.from_user.id): return await message.answer("⛔ دسترسی ندارید.")
-    kb=ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text=LANGUAGES["fa"]["name"]),KeyboardButton(text=LANGUAGES["en"]["name"])],
-        [KeyboardButton(text=LANGUAGES["ar"]["name"]),KeyboardButton(text=LANGUAGES["tr"]["name"])],
-        [KeyboardButton(text=LANGUAGES["ru"]["name"]),KeyboardButton(text=LANGUAGES["de"]["name"])],
-        [KeyboardButton(text="🔙 بازگشت به تنظیمات")],
-    ],resize_keyboard=True)
-    await message.answer("🌐 Select language / انتخاب زبان:",reply_markup=kb)
+    code=next((k for k,v in LANGUAGES.items() if v["name"]==message.text),"fa")
+    await set_language(message.from_user.id,code)
+    await message.answer(f"✅ {LANGUAGES[code]['name']} فعال شد.",reply_markup=settings_keyboard(message.from_user.id))
 
-@dp.message(F.text.in_(set(d["name"] for d in LANGUAGES.values())))
-async def choose_language(message: Message):
-    if not is_admin(message.from_user.id): return await message.answer("⛔ دسترسی ندارید.")
-    lang=LANGUAGE_NAMES[message.text]
-    await set_language(message.from_user.id,lang)
-    await message.answer("✅ Language updated.",reply_markup=settings_keyboard(message.from_user.id))
-
-
-
-@dp.message(F.text.in_({d["start_view"] for d in LANGUAGES.values()}))
-async def start_preview(message: Message):
-    if not is_admin(message.from_user.id): return await message.answer("⛔ دسترسی ندارید.")
-    text=setting("start_text","👋 خوش آمدی!")
-    kb=ReplyKeyboardMarkup(keyboard=[
-        [styled_button("✏️ ویرایش متن استارت","primary")],
-        [styled_button("🔙 بازگشت به تنظیمات","primary")],
-    ],resize_keyboard=True)
-    await message.answer("👀 <b>نمایش استارت از دید کاربر</b>\n\n"+text,parse_mode="HTML",reply_markup=kb)
-
-@dp.message(F.text == "✏️ ویرایش متن استارت")
-async def edit_start_text(message: Message):
-    if not is_admin(message.from_user.id): return await message.answer("⛔ دسترسی ندارید.")
-    admin_actions[message.from_user.id]="edit_start"
-    await message.answer("✏️ متن جدید Start را در پیام بعدی بفرست.\nلغو: /cancel")
 
 # =========================================================
 # MY STATS / ACCOUNT
@@ -1986,12 +1960,17 @@ async def text_router(message: Message):
         if canonical=="admins": return await admin_manage(message)
         if canonical=="blocks": return await block_manage(message)
         if canonical=="start_view": return await start_preview(message)
+        if canonical=="users": return await users_list(message)
+        if canonical=="blocked_list": return await blocked_list(message)
+        if canonical=="admin_list": return await admin_list(message)
+        if canonical=="add_admin": return await add_admin_start(message)
+        if canonical=="remove_admin": return await remove_admin_start(message)
+        if canonical=="force": return await join_manage(message)
+        if canonical=="stats": return await global_stats(message)
+        if canonical=="file_settings": return await file_settings(message)
         if canonical=="back": return await back_main(message)
         if canonical=="toggle_on" or canonical=="toggle_off": return await toggle_bot(message)
 
-    # Menu messages have dedicated handlers.
-    if message.text in MENU_TEXTS:
-        return
 
     action = admin_actions.get(uid)
 
