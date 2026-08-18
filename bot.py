@@ -12,6 +12,7 @@ from aiohttp import web, ClientSession, ClientTimeout
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.types import (
     Message, CallbackQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
@@ -1782,15 +1783,27 @@ async def broadcast_start(message: Message):
 
 
 # =========================================================
+# START PREVIEW
+# =========================================================
+
+async def start_preview(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    text = setting("start_text", "🌟 بات جستجوی حرفه‌ای 🌟")
+    await message.answer(
+        "👀 <b>پیش‌نمایش پیام Start برای کاربر</b>\n\n" + text,
+        parse_mode="HTML",
+        reply_markup=settings_keyboard(message.from_user.id),
+    )
+
+
+# =========================================================
 # LANGUAGE
 # =========================================================
 
-@dp.message(F.text)
 async def language_entry(message: Message):
-    # This handler is intentionally placed before the generic text router.
-    # It accepts the localized language button in every supported language.
     if message.text not in {d["lang"] for d in LANGUAGES.values()}:
-        return
+        raise SkipHandler
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ دسترسی ندارید.")
 
@@ -2002,7 +2015,7 @@ async def text_router(message: Message):
         if canonical=="files": return await my_files(message)
         if canonical=="broadcast": return await broadcast_start(message)
         if canonical=="settings": return await settings_handler(message)
-        if canonical=="lang": return await language(message)
+        if canonical=="lang": return await language_entry(message)
         if canonical=="admins": return await admin_manage(message)
         if canonical=="blocks": return await block_manage(message)
         if canonical=="start_view": return await start_preview(message)
