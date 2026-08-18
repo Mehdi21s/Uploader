@@ -2,6 +2,7 @@ import asyncio
 import os
 import secrets
 import sqlite3
+from contextlib import suppress
 from pathlib import Path
 from html import escape
 from urllib.parse import quote
@@ -632,11 +633,32 @@ def L(uid, key):
     return LANGUAGES[user_lang(uid)][key]
 
 def localized_label_map():
-    m={}
-    keys={"upload":"upload","group":"group","files":"files","broadcast":"broadcast","toggle_on":"toggle_on","toggle_off":"toggle_off","settings":"settings","back":"back","lang":"lang","admins":"admins","blocks":"blocks","start_view":"start_view","users":"users","blocked_list":"blocked_list","admin_list":"admin_list","add_admin":"add_admin","remove_admin":"remove_admin","force":"force","stats":"stats","file_settings":"file_settings"}
+    m = {}
+    keys = {
+        "upload":"upload", "group":"group", "files":"files", "broadcast":"broadcast",
+        "toggle_on":"toggle_on", "toggle_off":"toggle_off", "settings":"settings",
+        "back":"back", "lang":"lang", "admins":"admins", "blocks":"blocks",
+        "start_view":"start_view", "users":"users", "blocked_list":"blocked_list",
+        "admin_list":"admin_list", "add_admin":"add_admin", "remove_admin":"remove_admin",
+        "force":"force", "stats":"stats", "file_settings":"file_settings",
+    }
     for d in LANGUAGES.values():
         for key, canonical in keys.items():
-            m[d[key]]=canonical
+            m[d[key]] = canonical
+
+    # Static submenu buttons. These are kept compatible even when the main
+    # menu language has changed, so an old keyboard cannot become dead.
+    extra = {
+        "❌ انصراف":"cancel_upload", "✅ پایان":"finish_group",
+        "🔙 بازگشت به تنظیمات":"back_settings", "🏠 منوی اصلی":"back_main",
+        "🏠 بازگشت به منوی اصلی":"back_main", "🔙 منوی اصلی":"back_main",
+        "➕ مسدود کردن کاربر":"block_user", "➖ رفع مسدودی":"unblock_user",
+        "📋 لیست مسدودها":"blocked_list", "👑 لیست ادمین‌ها":"admin_list",
+        "➕ افزودن ادمین":"add_admin", "➖ حذف ادمین":"remove_admin",
+        "📣 پیام همگانی":"broadcast",
+    }
+    for label, action in extra.items():
+        m[label] = action
     return m
 
 
@@ -656,7 +678,8 @@ def upload_success_keyboard(bot_url, web_url, token):
     share_url=f"https://t.me/share/url?url={quote(bot_url,safe='')}"
     return InlineKeyboardMarkup(inline_keyboard=[
         [styled_inline_button("📁 مشاهده فایل‌ها",style="primary",callback_data="ui_files"),styled_inline_button("➕ افزودن فایل",style="success",callback_data="ui_upload")],
-        [styled_inline_button("🤖 دریافت در ربات",style="primary",url=bot_url),styled_inline_button("🌐 لینک وب",style="primary",url=web_url)],
+        [styled_inline_button("🌐 لینک وب",style="primary",url=web_url)],
+        [styled_inline_button("🤖 دریافت در ربات",style="primary",url=bot_url)],
         [styled_inline_button("📤 اشتراک‌گذاری",style="primary",url=share_url)],
         [styled_inline_button("✏️ ویرایش نام",style="primary",callback_data=f"rename_file:{token}"),styled_inline_button("🗑 حذف فایل",style="danger",callback_data=f"delete_file:{token}")],
     ])
@@ -666,7 +689,8 @@ def group_success_keyboard(bot_url, web_url, token):
     share_url=f"https://t.me/share/url?url={quote(bot_url,safe='')}"
     return InlineKeyboardMarkup(inline_keyboard=[
         [styled_inline_button("📁 مشاهده فایل‌ها",style="primary",callback_data="ui_files"),styled_inline_button("➕ افزودن فایل",style="success",callback_data=f"group_add:{token}")],
-        [styled_inline_button("🤖 دریافت در ربات",style="primary",url=bot_url),styled_inline_button("🌐 لینک وب",style="primary",url=web_url)],
+        [styled_inline_button("🌐 لینک وب",style="primary",url=web_url)],
+        [styled_inline_button("🤖 دریافت در ربات",style="primary",url=bot_url)],
         [styled_inline_button("📤 اشتراک‌گذاری",style="primary",url=share_url)],
         [styled_inline_button("🗑 حذف مجموعه",style="danger",callback_data=f"delete_group:{token}")],
     ])
@@ -1786,26 +1810,28 @@ async def language_entry(message: Message):
 
 @dp.callback_query(F.data.startswith("setlang:"))
 async def set_language_callback(callback: CallbackQuery):
-    uid=callback.from_user.id
+    uid = callback.from_user.id
     if not is_admin(uid):
-        return await callback.answer("⛔ دسترسی ندارید.",show_alert=True)
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
 
-    code=callback.data.partition(":")[2].strip()
+    code = callback.data.partition(":")[2].strip()
     if code not in LANGUAGES:
-        return await callback.answer("❌ زبان نامعتبر است.",show_alert=True)
+        await callback.answer("❌ زبان نامعتبر است.", show_alert=True)
+        return
 
-    await set_language(uid,code)
+    set_language(uid, code)
     await callback.answer(f"✅ {LANGUAGES[code]['name']}")
 
-    # Replace the old language picker and immediately show the newly
-    # localized settings menu. This also prevents the old mixed-language
-    # reply keyboard from remaining visible.
-    with suppress(Exception):
+    # Delete the language picker safely. Never let an exception here stop
+    # the callback from rebuilding the keyboard.
+    try:
         await callback.message.delete()
+    except Exception:
+        pass
 
-    await callback.bot.send_message(
-        chat_id=uid,
-        text=f"✅ {LANGUAGES[code]['name']} فعال شد.",
+    await callback.message.answer(
+        f"✅ {LANGUAGES[code]['name']} فعال شد.",
         reply_markup=settings_keyboard(uid),
     )
 
@@ -1990,6 +2016,14 @@ async def text_router(message: Message):
         if canonical=="file_settings": return await file_settings(message)
         if canonical=="back": return await back_main(message)
         if canonical=="toggle_on" or canonical=="toggle_off": return await toggle_bot(message)
+        if canonical=="finish_group": return await finalize_group(message)
+        if canonical=="cancel_upload":
+            clear_user_state(uid)
+            return await message.answer("❌ آپلود لغو شد.", reply_markup=main_keyboard(uid))
+        if canonical=="back_settings": return await back_settings(message)
+        if canonical=="back_main": return await back_main(message)
+        if canonical=="block_user": return await block_start(message)
+        if canonical=="unblock_user": return await unblock_start(message)
 
 
     action = admin_actions.get(uid)
