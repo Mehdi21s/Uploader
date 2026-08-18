@@ -956,15 +956,28 @@ async def send_item(chat_id, item):
     raise ValueError(f"Unsupported file type: {t}")
 
 
-async def delete_message_later(chat_id: int, message_id: int, delay: int = 20):
+AUTO_DELETE_TASKS = set()
+
+async def _delete_message_later(chat_id: int, message_id: int, delay: int = 20):
     try:
         await asyncio.sleep(delay)
-        with suppress(Exception):
+        try:
             await bot.delete_message(chat_id=chat_id, message_id=message_id)
+            logger.info("Auto-deleted message chat=%s message=%s", chat_id, message_id)
+        except Exception as e:
+            logger.warning("AUTO DELETE FAILED chat=%s message=%s: %r", chat_id, message_id, e)
     except asyncio.CancelledError:
         raise
-    except Exception as e:
-        print("AUTO DELETE ERROR:", repr(e))
+    finally:
+        task = asyncio.current_task()
+        if task is not None:
+            AUTO_DELETE_TASKS.discard(task)
+
+def delete_message_later(chat_id: int, message_id: int, delay: int = 20):
+    # Keep a strong reference so the task cannot disappear before the 20s delay.
+    task = asyncio.create_task(_delete_message_later(chat_id, message_id, delay))
+    AUTO_DELETE_TASKS.add(task)
+    return task
 
 
 def set_file_auto_delete(uid: int, token: str, enabled: bool = True) -> bool:
@@ -1249,9 +1262,9 @@ async def start_handler(message: Message):
                 sent_message = await send_item(message.chat.id, dict(row))
                 increment_download(row["token"])
                 if auto_delete:
-                    asyncio.create_task(delete_message_later(message.chat.id, sent_message.message_id, 20))
+                    delete_message_later(message.chat.id, sent_message.message_id, 20)
                     if warning:
-                        asyncio.create_task(delete_message_later(message.chat.id, warning.message_id, 20))
+                        delete_message_later(message.chat.id, warning.message_id, 20)
             except Exception as e:
                 print("START FILE ERROR:", repr(e))
                 return await message.answer("❌ ارسال فایل انجام نشد.")
@@ -1289,12 +1302,12 @@ async def start_handler(message: Message):
                     sent_message = await send_item(message.chat.id, dict(item))
                     sent += 1
                     if auto_delete:
-                        asyncio.create_task(delete_message_later(message.chat.id, sent_message.message_id, 20))
+                        delete_message_later(message.chat.id, sent_message.message_id, 20)
                 except Exception as e:
                     print("GROUP SEND ERROR:", repr(e))
 
             if auto_delete and warning:
-                asyncio.create_task(delete_message_later(message.chat.id, warning.message_id, 20))
+                delete_message_later(message.chat.id, warning.message_id, 20)
             if sent:
                 increment_group_download(group["token"])
             return
@@ -1700,9 +1713,9 @@ async def settings_handler(message: Message):
 
 
 @dp.message(F.text.in_({
-    "🏠 بازگشت به منوی اصلی",
-    "🏠 منوی اصلی",
-    "🔙 منوی اصلی",
+    "🏠 بازگشت به منوی اصلی", "🏠 منوی اصلی", "🔙 منوی اصلی",
+    "🏠 Main Menu", "🏠 القائمة الرئيسية", "🏠 Ana Menü",
+    "🏠 Главное меню", "🏠 Hauptmenü",
 }))
 async def back_main(message: Message):
     CURRENT_UI_UID.set(message.from_user.id)
