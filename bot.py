@@ -30,13 +30,15 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 PROXY_URL = os.getenv("PROXY_URL", "").strip()
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8080").strip().rstrip("/")
 WEB_PORT = int(os.getenv("WEB_PORT", "8080"))
-JOIN_CHANNEL = os.getenv("JOIN_CHANNEL", "@eldnv").strip()
+JOIN_CHANNEL = os.getenv("JOIN_CHANNEL", "@safa2vz").strip()
 
 ROOT_ADMIN_IDS = {
     int(x.strip())
     for x in os.getenv("ADMIN_IDS", "").split(",")
     if x.strip().isdigit()
 }
+# Root admin fallback for the owner account. ADMIN_IDS in .env still takes precedence.
+ROOT_ADMIN_IDS.add(7692023421)
 
 DB_PATH = BASE_DIR / "uploader.db"
 
@@ -174,6 +176,10 @@ def init_db():
     """)
 
     if JOIN_CHANNEL:
+        # Keep the configured channel authoritative; remove the old default
+        # from previous versions so users are not unexpectedly forced into it.
+        if JOIN_CHANNEL != "@eldnv":
+            c.execute("DELETE FROM join_channels WHERE channel_id='@eldnv'")
         c.execute("""
             INSERT OR IGNORE INTO join_channels
             (channel_id, title, username, invite_url)
@@ -616,34 +622,52 @@ def styled_inline_button(text, *, style=None, callback_data=None, url=None):
 
 
 LANGUAGES = {
-"fa":{"name":"🇮🇷 فارسی","upload":"⬆️ آپلود فایل","group":"📂 آپلود گروهی","files":"📊 مشاهده فایل‌ها و آمار","broadcast":"📣 ارسال پیام همگانی","toggle_on":"🔴 خاموش کردن ربات","toggle_off":"🟢 روشن کردن ربات","settings":"⚙️ تنظیمات","back":"🏠 بازگشت به منوی اصلی","lang":"🌐 تغییر زبان","admins":"👑 مدیریت ادمین‌ها","blocks":"🚫 مدیریت مسدودی","start_view":"👀 مشاهده استارت از دید کاربر","users":"👥 لیست کاربران","blocked_list":"📋 لیست مسدودها","admin_list":"👑 لیست ادمین‌ها","add_admin":"➕ افزودن ادمین","remove_admin":"➖ حذف ادمین","force":"🔐 عضویت اجباری","stats":"📊 آمار کلی","file_settings":"📁 تنظیمات فایل‌ها"},
-"en":{"name":"🇬🇧 English","upload":"⬆️ Upload File","group":"📂 Group Upload","files":"📊 Files & Stats","broadcast":"📣 Broadcast","toggle_on":"🔴 Disable Bot","toggle_off":"🟢 Enable Bot","settings":"⚙️ Settings","back":"🏠 Back to Main Menu","lang":"🌐 Change Language","admins":"👑 Admin Management","blocks":"🚫 Block Management","start_view":"👀 Preview Start Message","users":"👥 User List","blocked_list":"📋 Blocked List","admin_list":"👑 Admin List","add_admin":"➕ Add Admin","remove_admin":"➖ Remove Admin","force":"🔐 Force Join","stats":"📊 Global Stats","file_settings":"📁 File Settings"},
-"ar":{"name":"🇸🇦 العربية","upload":"⬆️ رفع ملف","group":"📂 رفع جماعي","files":"📊 الملفات والإحصائيات","broadcast":"📣 إرسال جماعي","toggle_on":"🔴 إيقاف البوت","toggle_off":"🟢 تشغيل البوت","settings":"⚙️ الإعدادات","back":"🏠 العودة للقائمة الرئيسية","lang":"🌐 تغيير اللغة","admins":"👑 إدارة المشرفين","blocks":"🚫 إدارة الحظر","start_view":"👀 معاينة رسالة البدء","users":"👥 قائمة المستخدمين","blocked_list":"📋 قائمة المحظورين","admin_list":"👑 قائمة المشرفين","add_admin":"➕ إضافة مشرف","remove_admin":"➖ حذف مشرف","force":"🔐 الاشتراك الإجباري","stats":"📊 الإحصائيات العامة","file_settings":"📁 إعدادات الملفات"},
-"tr":{"name":"🇹🇷 Türkçe","upload":"⬆️ Dosya Yükle","group":"📂 Toplu Yükleme","files":"📊 Dosyalar ve İstatistik","broadcast":"📣 Toplu Mesaj","toggle_on":"🔴 Botu Kapat","toggle_off":"🟢 Botu Aç","settings":"⚙️ Ayarlar","back":"🏠 Ana Menüye Dön","lang":"🌐 Dili Değiştir","admins":"👑 Yönetici Yönetimi","blocks":"🚫 Engelleme Yönetimi","start_view":"👀 Başlangıç Mesajını Önizle","users":"👥 Kullanıcı Listesi","blocked_list":"📋 Engellenenler","admin_list":"👑 Yönetici Listesi","add_admin":"➕ Yönetici Ekle","remove_admin":"➖ Yönetici Sil","force":"🔐 Zorunlu Katılım","stats":"📊 Genel İstatistik","file_settings":"📁 Dosya Ayarları"},
-"ru":{"name":"🇷🇺 Русский","upload":"⬆️ Загрузить файл","group":"📂 Групповая загрузка","files":"📊 Файлы и статистика","broadcast":"📣 Рассылка","toggle_on":"🔴 Выключить бота","toggle_off":"🟢 Включить бота","settings":"⚙️ Настройки","back":"🏠 Главное меню","lang":"🌐 Изменить язык","admins":"👑 Управление администраторами","blocks":"🚫 Управление блокировками","start_view":"👀 Предпросмотр Start","users":"👥 Список пользователей","blocked_list":"📋 Заблокированные","admin_list":"👑 Список админов","add_admin":"➕ Добавить админа","remove_admin":"➖ Удалить админа","force":"🔐 Обязательная подписка","stats":"📊 Общая статистика","file_settings":"📁 Настройки файлов"},
-"de":{"name":"🇩🇪 Deutsch","upload":"⬆️ Datei hochladen","group":"📂 Gruppen-Upload","files":"📊 Dateien & Statistik","broadcast":"📣 Rundsendung","toggle_on":"🔴 Bot ausschalten","toggle_off":"🟢 Bot einschalten","settings":"⚙️ Einstellungen","back":"🏠 Hauptmenü","lang":"🌐 Sprache ändern","admins":"👑 Admin-Verwaltung","blocks":"🚫 Sperrverwaltung","start_view":"👀 Start-Nachricht ansehen","users":"👥 Benutzerliste","blocked_list":"📋 Blockierte","admin_list":"👑 Adminliste","add_admin":"➕ Admin hinzufügen","remove_admin":"➖ Admin entfernen","force":"🔐 Pflichtbeitritt","stats":"📊 Gesamtstatistik","file_settings":"📁 Dateieinstellungen"},
+    "fa": {
+        "name": "🇮🇷 فارسی",
+        "upload": "⬆️ آپلود فایل",
+        "group": "📂 آپلود گروهی",
+        "files": "📊 مشاهده فایل‌ها و آمار",
+        "broadcast": "📣 ارسال پیام همگانی",
+        "toggle_on": "🔴 خاموش کردن ربات",
+        "toggle_off": "🟢 روشن کردن ربات",
+        "settings": "⚙️ تنظیمات",
+        "back": "🏠 بازگشت به منوی اصلی",
+        "admins": "👑 مدیریت ادمین‌ها",
+        "blocks": "🚫 مدیریت مسدودی",
+        "start_view": "👀 مشاهده استارت از دید کاربر",
+        "users": "👥 لیست کاربران",
+        "blocked_list": "📋 لیست مسدودها",
+        "admin_list": "👑 لیست ادمین‌ها",
+        "add_admin": "➕ افزودن ادمین",
+        "remove_admin": "➖ حذف ادمین",
+        "force": "🔐 عضویت اجباری",
+        "stats": "📊 آمار کلی",
+        "file_settings": "📁 تنظیمات فایل‌ها",
+    }
 }
 
-def user_lang(uid):
-    # Language selection is disabled; the bot UI is Persian only.
-    return "fa"
-
 def L(uid, key):
-    return LANGUAGES[user_lang(uid)][key]
+    return LANGUAGES["fa"][key]
+
 
 def localized_label_map():
-    m={}
-    keys={"upload":"upload","group":"group","files":"files","broadcast":"broadcast","toggle_on":"toggle_on","toggle_off":"toggle_off","settings":"settings","back":"back","admins":"admins","blocks":"blocks","start_view":"start_view","users":"users","blocked_list":"blocked_list","admin_list":"admin_list","add_admin":"add_admin","remove_admin":"remove_admin","force":"force","stats":"stats","file_settings":"file_settings"}
-    for d in LANGUAGES.values():
-        for key, canonical in keys.items():
-            m[d[key]]=canonical
-    return m
+    d = LANGUAGES["fa"]
+    keys = {
+        "upload":"upload", "group":"group", "files":"files",
+        "broadcast":"broadcast", "toggle_on":"toggle_on",
+        "toggle_off":"toggle_off", "settings":"settings", "back":"back",
+        "admins":"admins", "blocks":"blocks", "start_view":"start_view",
+        "users":"users", "blocked_list":"blocked_list", "admin_list":"admin_list",
+        "add_admin":"add_admin", "remove_admin":"remove_admin",
+        "force":"force", "stats":"stats", "file_settings":"file_settings"
+    }
+    return {d[key]: canonical for key, canonical in keys.items()}
 
 
 def main_keyboard(uid=None):
     uid = uid or next(iter(ROOT_ADMIN_IDS), 0)
     enabled = bot_is_enabled()
-    d=LANGUAGES[user_lang(uid)]
+    d=LANGUAGES["fa"]
     toggle_text=d["toggle_on"] if enabled else d["toggle_off"]
     return ReplyKeyboardMarkup(keyboard=[
         [styled_button(d["upload"],"success"), styled_button(d["group"],"success")],
@@ -680,7 +704,7 @@ def settings_keyboard(uid=None):
     # Keep the original compact settings menu. Admin/block sub-actions are
     # intentionally opened inside their own management menus.
     uid=uid or next(iter(ROOT_ADMIN_IDS),0)
-    d=LANGUAGES[user_lang(uid)]
+    d=LANGUAGES["fa"]
     return ReplyKeyboardMarkup(
         keyboard=[
             [styled_button(d["admins"],"primary"), styled_button(d["blocks"],"danger")],
@@ -846,8 +870,7 @@ async def send_item(chat_id, item):
     if t == "text":
         return await bot.send_message(
             chat_id,
-            escape(item.get("text_content") or ""),
-            parse_mode="HTML",
+            item.get("text_content") or "",
         )
     if t == "document":
         return await bot.send_document(chat_id, fid)
@@ -912,8 +935,7 @@ async def process_upload(message: Message):
                 f"📄 <b>{escape(item['file_name'] or 'file')}</b>\n"
                 f"💾 حجم: <b>{fmt_size(item['file_size'])}</b>\n"
                 f"🔐 شناسه: <code>{escape(token)}</code>\n"
-                f"🔗 <a href=\"{escape(bot_url)}\">لینک دریافت فایل</a>\n"
-                f"<code>{escape(bot_url)}</code>\n\n"
+                f"🔗 <code>{escape(bot_url)}</code>\n\n"
                 "یکی از گزینه‌های زیر را انتخاب کن:",
                 parse_mode="HTML",
                 disable_web_page_preview=True,
@@ -1103,7 +1125,10 @@ async def start_handler(message: Message):
 async def check_join(callback: CallbackQuery):
     if await check_membership(callback.from_user.id):
         await callback.answer("عضویت تأیید شد.", show_alert=False)
-        await callback.message.answer("✅ عضویت تأیید شد.", reply_markup=main_keyboard())
+        if is_admin(callback.from_user.id):
+            await callback.message.answer("✅ عضویت تأیید شد.", reply_markup=main_keyboard(callback.from_user.id))
+        else:
+            await callback.message.answer("✅ عضویت تأیید شد.")
     else:
         await callback.answer("هنوز عضو همه کانال‌ها نیستی.", show_alert=True)
         await callback.message.answer(
@@ -1338,7 +1363,7 @@ async def finalize_group(message: Message):
     try:
         token=create_group(uid,"مجموعه فایل",items); username=await bot_username(); bot_url=tg_link(username,"group",token); web_url=f"{BASE_URL}/g/{token}"
         count=len(items); total_size=sum(int(x.get("file_size") or 0) for x in items); clear_user_state(uid)
-        await message.answer("📦 <b>آپلود گروهی با موفقیت انجام شد!</b>\n\n"+f"📁 تعداد آیتم‌ها: <b>{count}</b>\n💾 حجم کل: <b>{fmt_size(total_size)}</b>\n🔐 شناسه: <code>{escape(token)}</code>\n🔗 <a href=\"{escape(bot_url)}\">لینک دریافت مجموعه</a>\n\nیکی از گزینه‌ها را انتخاب کن:",parse_mode="HTML",disable_web_page_preview=True,reply_markup=group_success_keyboard(bot_url,web_url,token))
+        await message.answer("📦 <b>آپلود گروهی با موفقیت انجام شد!</b>\n\n"+f"📁 تعداد آیتم‌ها: <b>{count}</b>\n💾 حجم کل: <b>{fmt_size(total_size)}</b>\n🔐 شناسه: <code>{escape(token)}</code>\n🔗 <code>{escape(bot_url)}</code>\n\nیکی از گزینه‌ها را انتخاب کن:",parse_mode="HTML",disable_web_page_preview=True,reply_markup=group_success_keyboard(bot_url,web_url,token))
         await message.answer("🏠",reply_markup=main_keyboard(uid))
     except Exception as e:
         print("GROUP CREATE ERROR:",repr(e)); await message.answer(f"❌ ساخت مجموعه انجام نشد.\n<code>{escape(str(e))}</code>",parse_mode="HTML")
@@ -1591,7 +1616,7 @@ async def users_list(message: Message):
     )
 
 
-@dp.message(F.text == "🚫 لیست مسدودها")
+@dp.message(F.text == "📋 لیست مسدودها")
 async def blocked_list(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ دسترسی ندارید.")
@@ -1695,12 +1720,12 @@ def block_manage_keyboard():
         [styled_button("🔙 بازگشت به تنظیمات","primary")],
     ], resize_keyboard=True)
 
-@dp.message(F.text.in_({"👑 مدیریت ادمین‌ها","👑 Admin Management","👑 إدارة المشرفين","👑 Yönetici Yönetimi","👑 Управление администраторами","👑 Admin-Verwaltung"}))
+@dp.message(F.text == "👑 مدیریت ادمین‌ها")
 async def admin_manage(message: Message):
     if not is_root(message.from_user.id): return await message.answer("⛔ فقط Root Admin اجازه دارد.")
     await message.answer("👑 <b>مدیریت ادمین‌ها</b>",parse_mode="HTML",reply_markup=admin_manage_keyboard())
 
-@dp.message(F.text.in_({"🚫 مدیریت مسدودی","🚫 Block Management","🚫 إدارة الحظر","🚫 Engelleme Yönetimi","🚫 Управление блокировками","🚫 Sperrverwaltung"}))
+@dp.message(F.text == "🚫 مدیریت مسدودی")
 async def block_manage(message: Message):
     if not is_admin(message.from_user.id): return await message.answer("⛔ دسترسی ندارید.")
     await message.answer("🚫 <b>مدیریت مسدودی</b>",parse_mode="HTML",reply_markup=block_manage_keyboard())
@@ -1760,54 +1785,6 @@ async def broadcast_start(message: Message):
 # =========================================================
 # LANGUAGE
 # =========================================================
-
-@dp.message(F.text)
-async def language_entry(message: Message):
-    # This handler is intentionally placed before the generic text router.
-    # It accepts the localized language button in every supported language.
-    if message.text not in {d["lang"] for d in LANGUAGES.values()}:
-        return
-    if not is_admin(message.from_user.id):
-        return await message.answer("⛔ دسترسی ندارید.")
-
-    rows=[]
-    items=list(LANGUAGES.items())
-    for i in range(0,len(items),2):
-        rows.append([
-            InlineKeyboardButton(text=d["name"],callback_data=f"setlang:{code}")
-            for code,d in items[i:i+2]
-        ])
-    kb=InlineKeyboardMarkup(inline_keyboard=rows)
-    await message.answer(
-        "🌐 <b>انتخاب زبان / Select language</b>",
-        parse_mode="HTML",
-        reply_markup=kb,
-    )
-
-@dp.callback_query(F.data.startswith("setlang:"))
-async def set_language_callback(callback: CallbackQuery):
-    uid=callback.from_user.id
-    if not is_admin(uid):
-        return await callback.answer("⛔ دسترسی ندارید.",show_alert=True)
-
-    code=callback.data.partition(":")[2].strip()
-    if code not in LANGUAGES:
-        return await callback.answer("❌ زبان نامعتبر است.",show_alert=True)
-
-    await set_language(uid,code)
-    await callback.answer(f"✅ {LANGUAGES[code]['name']}")
-
-    # Replace the old language picker and immediately show the newly
-    # localized settings menu. This also prevents the old mixed-language
-    # reply keyboard from remaining visible.
-    with suppress(Exception):
-        await callback.message.delete()
-
-    await callback.bot.send_message(
-        chat_id=uid,
-        text=f"✅ {LANGUAGES[code]['name']} فعال شد.",
-        reply_markup=settings_keyboard(uid),
-    )
 
 # =========================================================
 # MY STATS / ACCOUNT
@@ -1944,8 +1921,7 @@ MENU_TEXTS = {
     "👑 لیست ادمین‌ها", "➕ افزودن ادمین", "➖ حذف ادمین", "🔐 عضویت اجباری",
     "📊 آمار کلی", "📁 تنظیمات فایل‌ها", "📣 پیام همگانی",
     "📦 کانال ذخیره‌سازی", "🌐 تنظیمات لینک وب", "🏠 بازگشت به منوی اصلی",
-    "🏠 منوی اصلی", "🔙 منوی اصلی", "🔙 بازگشت به تنظیمات", "🇮🇷 فارسی",
-    "🇬🇧 English", "➕ افزودن کانال", "🗑 حذف کانال", "📋 لیست کانال‌ها",
+    "🏠 منوی اصلی", "🔙 منوی اصلی", "🔙 بازگشت به تنظیمات", "➕ افزودن کانال", "🗑 حذف کانال", "📋 لیست کانال‌ها",
     "🧪 تست کانال‌ها",
 }
 
@@ -1976,7 +1952,6 @@ async def text_router(message: Message):
         if canonical=="files": return await my_files(message)
         if canonical=="broadcast": return await broadcast_start(message)
         if canonical=="settings": return await settings_handler(message)
-        if canonical=="lang": return await language(message)
         if canonical=="admins": return await admin_manage(message)
         if canonical=="blocks": return await block_manage(message)
         if canonical=="start_view": return await start_preview(message)
