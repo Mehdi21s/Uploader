@@ -677,17 +677,22 @@ def group_upload_keyboard():
 
 
 def settings_keyboard(uid=None):
-    uid=uid or next(iter(ROOT_ADMIN_IDS),0); d=LANGUAGES[user_lang(uid)]
-    return ReplyKeyboardMarkup(keyboard=[
-        [styled_button(d["admins"],"primary"), styled_button(d["blocks"],"danger")],
-        [styled_button(d["users"],"primary"), styled_button(d["admin_list"],"primary")],
-        [styled_button(d["add_admin"],"success"), styled_button(d["remove_admin"],"danger")],
-        [styled_button(d["blocked_list"],"danger"), styled_button(d["force"],"primary")],
-        [styled_button(d["stats"],"primary"), styled_button(d["file_settings"],"primary")],
-        [styled_button(d["lang"],"primary"), styled_button(d["broadcast"],"success")],
-        [styled_button(d["start_view"],"primary")],
-        [styled_button(d["back"],"primary")],
-    ],resize_keyboard=True,is_persistent=True)
+    # Keep the original compact settings menu. Admin/block sub-actions are
+    # intentionally opened inside their own management menus.
+    uid=uid or next(iter(ROOT_ADMIN_IDS),0)
+    d=LANGUAGES[user_lang(uid)]
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [styled_button(d["admins"],"primary"), styled_button(d["blocks"],"danger")],
+            [styled_button(d["users"],"primary"), styled_button(d["force"],"primary")],
+            [styled_button(d["stats"],"primary"), styled_button(d["file_settings"],"primary")],
+            [styled_button(d["lang"],"primary"), styled_button(d["broadcast"],"success")],
+            [styled_button(d["start_view"],"primary")],
+            [styled_button(d["back"],"primary")],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
 
 
 def file_settings_keyboard():
@@ -1756,38 +1761,53 @@ async def broadcast_start(message: Message):
 # LANGUAGE
 # =========================================================
 
-@dp.message(F.text.in_({d["lang"] for d in LANGUAGES.values()}))
-async def language(message: Message):
+@dp.message(F.text)
+async def language_entry(message: Message):
+    # This handler is intentionally placed before the generic text router.
+    # It accepts the localized language button in every supported language.
+    if message.text not in {d["lang"] for d in LANGUAGES.values()}:
+        return
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ دسترسی ندارید.")
-    kb=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=d["name"],callback_data=f"setlang:{code}") for code,d in list(LANGUAGES.items())[0:2]],
-        [InlineKeyboardButton(text=d["name"],callback_data=f"setlang:{code}") for code,d in list(LANGUAGES.items())[2:4]],
-        [InlineKeyboardButton(text=d["name"],callback_data=f"setlang:{code}") for code,d in list(LANGUAGES.items())[4:6]],
-    ])
-    await message.answer("🌐 <b>انتخاب زبان / Select language</b>",parse_mode="HTML",reply_markup=kb)
+
+    rows=[]
+    items=list(LANGUAGES.items())
+    for i in range(0,len(items),2):
+        rows.append([
+            InlineKeyboardButton(text=d["name"],callback_data=f"setlang:{code}")
+            for code,d in items[i:i+2]
+        ])
+    kb=InlineKeyboardMarkup(inline_keyboard=rows)
+    await message.answer(
+        "🌐 <b>انتخاب زبان / Select language</b>",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
 
 @dp.callback_query(F.data.startswith("setlang:"))
 async def set_language_callback(callback: CallbackQuery):
     uid=callback.from_user.id
     if not is_admin(uid):
         return await callback.answer("⛔ دسترسی ندارید.",show_alert=True)
-    code=callback.data.split(":",1)[1]
+
+    code=callback.data.partition(":")[2].strip()
     if code not in LANGUAGES:
         return await callback.answer("❌ زبان نامعتبر است.",show_alert=True)
+
     await set_language(uid,code)
-    await callback.answer("✅ زبان تغییر کرد.")
-    await callback.message.edit_text(f"✅ {LANGUAGES[code]['name']} فعال شد.")
-    await callback.message.answer(LANGUAGES[code]["settings"],reply_markup=settings_keyboard(uid))
+    await callback.answer(f"✅ {LANGUAGES[code]['name']}")
 
-@dp.message(F.text.in_({d["name"] for d in LANGUAGES.values()}))
-async def choose_language_legacy(message: Message):
-    # Backward-compatible with old reply keyboards.
-    if not is_admin(message.from_user.id): return await message.answer("⛔ دسترسی ندارید.")
-    code=next((k for k,v in LANGUAGES.items() if v["name"]==message.text),"fa")
-    await set_language(message.from_user.id,code)
-    await message.answer(f"✅ {LANGUAGES[code]['name']} فعال شد.",reply_markup=settings_keyboard(message.from_user.id))
+    # Replace the old language picker and immediately show the newly
+    # localized settings menu. This also prevents the old mixed-language
+    # reply keyboard from remaining visible.
+    with suppress(Exception):
+        await callback.message.delete()
 
+    await callback.bot.send_message(
+        chat_id=uid,
+        text=f"✅ {LANGUAGES[code]['name']} فعال شد.",
+        reply_markup=settings_keyboard(uid),
+    )
 
 # =========================================================
 # MY STATS / ACCOUNT
