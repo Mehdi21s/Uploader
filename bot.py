@@ -625,15 +625,15 @@ LANGUAGES = {
 }
 
 def user_lang(uid):
-    c=db(); r=c.execute("SELECT language FROM user_settings WHERE user_id=?",(uid,)).fetchone(); c.close()
-    return r["language"] if r and r["language"] in LANGUAGES else "fa"
+    # Language selection is disabled; the bot UI is Persian only.
+    return "fa"
 
 def L(uid, key):
     return LANGUAGES[user_lang(uid)][key]
 
 def localized_label_map():
     m={}
-    keys={"upload":"upload","group":"group","files":"files","broadcast":"broadcast","toggle_on":"toggle_on","toggle_off":"toggle_off","settings":"settings","back":"back","lang":"lang","admins":"admins","blocks":"blocks","start_view":"start_view","users":"users","blocked_list":"blocked_list","admin_list":"admin_list","add_admin":"add_admin","remove_admin":"remove_admin","force":"force","stats":"stats","file_settings":"file_settings"}
+    keys={"upload":"upload","group":"group","files":"files","broadcast":"broadcast","toggle_on":"toggle_on","toggle_off":"toggle_off","settings":"settings","back":"back","admins":"admins","blocks":"blocks","start_view":"start_view","users":"users","blocked_list":"blocked_list","admin_list":"admin_list","add_admin":"add_admin","remove_admin":"remove_admin","force":"force","stats":"stats","file_settings":"file_settings"}
     for d in LANGUAGES.values():
         for key, canonical in keys.items():
             m[d[key]]=canonical
@@ -891,7 +891,7 @@ async def process_upload(message: Message):
             f"📁 {escape(item['file_name'] or 'file')}\n"
             f"💾 {fmt_size(item['file_size'])}\n\n"
             "📤 فایل بعدی را بفرست.\n"
-            "وقتی تمام شد /done را بزن.",
+            "وقتی تمام شد روی «✅ پایان» بزن.",
             parse_mode="HTML",
         )
 
@@ -912,7 +912,8 @@ async def process_upload(message: Message):
                 f"📄 <b>{escape(item['file_name'] or 'file')}</b>\n"
                 f"💾 حجم: <b>{fmt_size(item['file_size'])}</b>\n"
                 f"🔐 شناسه: <code>{escape(token)}</code>\n"
-                f"🔗 <a href=\"{escape(bot_url)}\">لینک دریافت فایل</a>\n\n"
+                f"🔗 <a href=\"{escape(bot_url)}\">لینک دریافت فایل</a>\n"
+                f"<code>{escape(bot_url)}</code>\n\n"
                 "یکی از گزینه‌های زیر را انتخاب کن:",
                 parse_mode="HTML",
                 disable_web_page_preview=True,
