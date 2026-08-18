@@ -1327,7 +1327,7 @@ async def check_join(callback: CallbackQuery):
 # UPLOAD BUTTONS
 # =========================================================
 
-@dp.message(F.text == "⬆️ آپلود فایل")
+@dp.message(F.text.in_({'⬆️ آپلود فایل', '⬆️ Upload File', '⬆️ رفع ملف', '⬆️ Dosya Yükle', '⬆️ Загрузить файл', '⬆️ Datei hochladen'}))
 async def upload_single(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ فقط ادمین‌ها اجازه آپلود دارند.")
@@ -1344,7 +1344,7 @@ async def upload_single(message: Message):
     )
 
 
-@dp.message(F.text == "📂 آپلود گروهی")
+@dp.message(F.text.in_({'📂 آپلود گروهی', '📂 Bulk Upload', '📂 رفع جماعي', '📂 Toplu Yükleme', '📂 Массовая загрузка', '📂 Mehrere Dateien'}))
 async def upload_group(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ فقط ادمین‌ها اجازه آپلود دارند.")
@@ -1482,7 +1482,7 @@ def build_stats_dashboard(bot_info, user_id, user_row, users_total, active_users
     return "\n".join(lines)
 
 
-@dp.message(F.text == "📊 مشاهده فایل‌ها و آمار")
+@dp.message(F.text.in_({'📊 مشاهده فایل\u200cها و آمار', '📊 Files & Stats', '📊 الملفات والإحصائيات', '📊 Dosyalar & İstatistik', '📊 Файлы и статистика', '📊 Dateien & Statistik'}))
 async def my_files(message: Message):
     uid = message.from_user.id
     if not is_admin(uid):
@@ -1694,7 +1694,7 @@ async def toggle_bot(message: Message):
     )
 
 
-@dp.message(F.text == "⚙️ تنظیمات")
+@dp.message(F.text.in_({'⚙️ تنظیمات', '⚙️ Settings', '⚙️ الإعدادات', '⚙️ Ayarlar', '⚙️ Настройки', '⚙️ Einstellungen'}))
 async def settings_handler(message: Message):
     CURRENT_UI_UID.set(message.from_user.id)
     await send_settings(message)
@@ -1711,7 +1711,7 @@ async def back_main(message: Message):
     await message.answer("🏠 منوی اصلی", reply_markup=main_keyboard() if is_admin(message.from_user.id) else None)
 
 
-@dp.message(F.text == "🔙 بازگشت به تنظیمات")
+@dp.message(F.text.in_({'🔙 بازگشت به تنظیمات', '🔙 Back to Settings', '🔙 العودة إلى الإعدادات', '🔙 Ayarlara Dön', '🔙 Назад к настройкам', '🔙 Zurück zu Einstellungen'}))
 async def back_settings(message: Message):
     CURRENT_UI_UID.set(message.from_user.id)
     clear_user_state(message.from_user.id)
@@ -1722,7 +1722,7 @@ async def back_settings(message: Message):
 # FILE SETTINGS
 # =========================================================
 
-@dp.message(F.text == "📁 تنظیمات فایل‌ها")
+@dp.message(F.text.in_({'📁 تنظیمات فایل\u200cها', '📁 File Settings', '📁 إعدادات الملفات', '📁 Dosya Ayarları', '📁 Настройки файлов', '📁 Dateieinstellungen'}))
 async def file_settings(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ دسترسی ندارید.")
@@ -1859,7 +1859,7 @@ async def test_channels(message: Message):
 # ADMIN LISTS / STATS
 # =========================================================
 
-@dp.message(F.text == "👥 لیست کاربران")
+@dp.message(F.text.in_({'👥 لیست کاربران', '👥 Users', '👥 المستخدمون', '👥 Kullanıcılar', '👥 Пользователи', '👥 Benutzer'}))
 async def users_list(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ دسترسی ندارید.")
@@ -1940,7 +1940,7 @@ async def admin_list(message: Message):
     )
 
 
-@dp.message(F.text == "📊 آمار کلی")
+@dp.message(F.text.in_({'📊 آمار کلی', '📊 Statistics', '📊 الإحصائيات', '📊 İstatistikler', '📊 Статистика', '📊 Statistik'}))
 async def global_stats(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ دسترسی ندارید.")
@@ -1998,13 +1998,13 @@ async def remove_admin_start(message: Message):
     await message.answer("➖ آیدی عددی ادمین را بفرست.\nلغو: /cancel")
 
 
-@dp.message(F.text == "🚫 مدیریت مسدودی")
+@dp.message(F.text.in_({'🚫 مدیریت مسدودی', '🚫 Block Management', '🚫 إدارة الحظر', '🚫 Engelleme Yönetimi', '🚫 Управление блокировками', '🚫 Sperrverwaltung'}))
 async def block_management(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ دسترسی ندارید.")
     await message.answer("🚫 <b>مدیریت مسدودی کاربران</b>", parse_mode="HTML", reply_markup=block_manage_keyboard())
 
-@dp.message(F.text == "👑 مدیریت ادمین‌ها")
+@dp.message(F.text.in_({'👑 مدیریت ادمین\u200cها', '👑 Admin Management', '👑 إدارة المشرفين', '👑 Yönetici Yönetimi', '👑 Управление администраторами', '👑 Admin-Verwaltung'}))
 async def admin_management(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ دسترسی ندارید.")
@@ -2030,7 +2030,7 @@ async def unblock_user_start(message: Message):
     await message.answer("✅ آیدی عددی کاربر را بفرست.\nلغو: «❌ انصراف»")
 
 
-@dp.message(F.text.in_({"📣 ارسال پیام همگانی", "📣 پیام همگانی"}))
+@dp.message(F.text.in_({"📣 پیام همگانی", "📣 Broadcast", "📣 إرسال جماعي", "📣 Toplu Mesaj", "📣 Рассылка", "📣 Rundnachricht"}))
 async def broadcast_start(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ دسترسی ندارید.")
@@ -2094,7 +2094,7 @@ async def set_language(uid, lang):
 # MY STATS / ACCOUNT
 # =========================================================
 
-@dp.message(F.text == "📊 آمار من")
+@dp.message(F.text.in_({'📊 آمار من', '📊 My Stats', '📊 إحصائياتي', '📊 İstatistiklerim', '📊 Моя статистика', '📊 Meine Statistik'}))
 async def my_stats(message: Message):
     uid = message.from_user.id
     if not is_admin(uid):
@@ -2123,7 +2123,7 @@ async def my_stats(message: Message):
     )
 
 
-@dp.message(F.text == "👤 حساب من")
+@dp.message(F.text.in_({'👤 حساب من', '👤 My Account', '👤 حسابي', '👤 Hesabım', '👤 Мой аккаунт', '👤 Mein Konto'}))
 async def account(message: Message):
     await message.answer(
         "👤 <b>حساب شما</b>\n\n"
