@@ -140,6 +140,7 @@ def init_db():
         text_content TEXT,
         downloads INTEGER DEFAULT 0,
         active INTEGER DEFAULT 1,
+        auto_delete INTEGER DEFAULT 0,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -150,6 +151,7 @@ def init_db():
         title TEXT,
         downloads INTEGER DEFAULT 0,
         active INTEGER DEFAULT 1,
+        auto_delete INTEGER DEFAULT 0,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -171,6 +173,12 @@ def init_db():
         c.execute("ALTER TABLE join_channels ADD COLUMN invite_url TEXT")
     except sqlite3.OperationalError:
         pass
+
+    for table, column in (("files", "auto_delete"), ("groups", "auto_delete")):
+        try:
+            c.execute(f"ALTER TABLE {table} ADD COLUMN {column} INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
 
     c.execute("""
         INSERT OR IGNORE INTO bot_settings(key, value)
@@ -658,27 +666,63 @@ def styled_inline_button(text, *, style=None, callback_data=None, url=None):
         return InlineKeyboardButton(**kwargs)
 
 
+from contextvars import ContextVar
+CURRENT_UI_UID = ContextVar("CURRENT_UI_UID", default=None)
+
+LANGS = {
+    "fa": {"name": "🇮🇷 فارسی", "main": ["⬆️ آپلود فایل", "📂 آپلود گروهی", "📊 مشاهده فایل‌ها و آمار", "📣 پیام همگانی", "🔴 خاموش کردن ربات", "🟢 روشن کردن ربات", "⚙️ تنظیمات", "👤 حساب من"], "settings": ["👥 لیست کاربران", "🚫 مدیریت مسدودی", "👑 مدیریت ادمین‌ها", "🔐 عضویت اجباری", "📊 آمار کلی", "📁 تنظیمات فایل‌ها", "🌐 تغییر زبان", "📣 پیام همگانی", "🏠 بازگشت به منوی اصلی"]},
+    "en": {"name": "🇬🇧 English", "main": ["⬆️ Upload File", "📂 Bulk Upload", "📊 Files & Stats", "📣 Broadcast", "🔴 Turn Bot Off", "🟢 Turn Bot On", "⚙️ Settings", "👤 My Account"], "settings": ["👥 Users", "🚫 Block Management", "👑 Admin Management", "🔐 Force Join", "📊 Statistics", "📁 File Settings", "🌐 Change Language", "📣 Broadcast", "🏠 Main Menu"]},
+    "ar": {"name": "🇸🇦 العربية", "main": ["⬆️ رفع ملف", "📂 رفع جماعي", "📊 الملفات والإحصائيات", "📣 إرسال جماعي", "🔴 إيقاف البوت", "🟢 تشغيل البوت", "⚙️ الإعدادات", "👤 حسابي"], "settings": ["👥 المستخدمون", "🚫 إدارة الحظر", "👑 إدارة المشرفين", "🔐 الاشتراك الإجباري", "📊 الإحصائيات", "📁 إعدادات الملفات", "🌐 تغيير اللغة", "📣 إرسال جماعي", "🏠 القائمة الرئيسية"]},
+    "tr": {"name": "🇹🇷 Türkçe", "main": ["⬆️ Dosya Yükle", "📂 Toplu Yükleme", "📊 Dosyalar & İstatistik", "📣 Toplu Mesaj", "🔴 Botu Kapat", "🟢 Botu Aç", "⚙️ Ayarlar", "👤 Hesabım"], "settings": ["👥 Kullanıcılar", "🚫 Engelleme Yönetimi", "👑 Yönetici Yönetimi", "🔐 Zorunlu Katılım", "📊 İstatistikler", "📁 Dosya Ayarları", "🌐 Dil Değiştir", "📣 Toplu Mesaj", "🏠 Ana Menü"]},
+    "ru": {"name": "🇷🇺 Русский", "main": ["⬆️ Загрузить файл", "📂 Массовая загрузка", "📊 Файлы и статистика", "📣 Рассылка", "🔴 Выключить бота", "🟢 Включить бота", "⚙️ Настройки", "👤 Мой аккаунт"], "settings": ["👥 Пользователи", "🚫 Управление блокировками", "👑 Управление администраторами", "🔐 Обязательная подписка", "📊 Статистика", "📁 Настройки файлов", "🌐 Изменить язык", "📣 Рассылка", "🏠 Главное меню"]},
+    "de": {"name": "🇩🇪 Deutsch", "main": ["⬆️ Datei hochladen", "📂 Mehrere Dateien", "📊 Dateien & Statistik", "📣 Rundnachricht", "🔴 Bot ausschalten", "🟢 Bot einschalten", "⚙️ Einstellungen", "👤 Mein Konto"], "settings": ["👥 Benutzer", "🚫 Sperrverwaltung", "👑 Admin-Verwaltung", "🔐 Pflichtbeitritt", "📊 Statistik", "📁 Dateieinstellungen", "🌐 Sprache ändern", "📣 Rundnachricht", "🏠 Hauptmenü"]},
+}
+
+async def get_language(uid):
+    c = db()
+    r = c.execute("SELECT language FROM user_settings WHERE user_id=?", (uid,)).fetchone()
+    c.close()
+    return (r["language"] if r and r["language"] in LANGS else "fa")
+
+def lang_name(uid):
+    # Synchronous helper used only where a DB read is already safe.
+    c = db(); r = c.execute("SELECT language FROM user_settings WHERE user_id=?", (uid,)).fetchone(); c.close()
+    return r["language"] if r and r["language"] in LANGS else "fa"
+
+def tr(uid, key):
+    lang = lang_name(uid)
+    texts = {
+        "choose_language": {"fa":"🌐 زبان را انتخاب کن:","en":"🌐 Choose your language:","ar":"🌐 اختر لغتك:","tr":"🌐 Dilinizi seçin:","ru":"🌐 Выберите язык:","de":"🌐 Sprache auswählen:"},
+        "language_saved": {"fa":"✅ فارسی فعال شد.","en":"✅ English enabled.","ar":"✅ تم تفعيل العربية.","tr":"✅ Türkçe etkinleştirildi.","ru":"✅ Русский включён.","de":"✅ Deutsch aktiviert."},
+    }
+    return texts.get(key, {}).get(lang, texts.get(key, {}).get("fa", key))
+
 def main_keyboard():
-    toggle_text = "🔴 خاموش کردن ربات" if bot_is_enabled() else "🟢 روشن کردن ربات"
+    uid = CURRENT_UI_UID.get()
+    lang = lang_name(uid) if uid else "fa"
+    items = LANGS[lang]["main"]
+    toggle_text = items[4] if bot_is_enabled() else items[5]
     toggle_style = "danger" if bot_is_enabled() else "success"
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                styled_button("⬆️ آپلود فایل", "success"),
-                styled_button("📂 آپلود گروهی", "success"),
-            ],
-            [
-                styled_button("📊 مشاهده فایل‌ها و آمار", "primary"),
-                styled_button("📣 ارسال پیام همگانی", "primary"),
-            ],
-            [
-                styled_button(toggle_text, toggle_style),
-                styled_button("⚙️ تنظیمات", "primary"),
-            ],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-    )
+    return ReplyKeyboardMarkup(keyboard=[
+        [styled_button(items[0], "success"), styled_button(items[1], "success")],
+        [styled_button(items[2], "primary"), styled_button(items[3], "primary")],
+        [styled_button(toggle_text, toggle_style), styled_button(items[6], "primary")],
+        [styled_button(items[7], "primary")],
+    ], resize_keyboard=True, is_persistent=True)
+
+
+def settings_keyboard():
+    uid = CURRENT_UI_UID.get()
+    lang = lang_name(uid) if uid else "fa"
+    items = LANGS[lang]["settings"]
+    return ReplyKeyboardMarkup(keyboard=[
+        [styled_button(items[0], "primary")],
+        [styled_button(items[1], "danger"), styled_button(items[2], "primary")],
+        [styled_button(items[3], "primary"), styled_button(items[4], "primary")],
+        [styled_button(items[5], "primary"), styled_button(items[6], "primary")],
+        [styled_button(items[7], "success")],
+        [styled_button(items[8], "primary")],
+    ], resize_keyboard=True, is_persistent=True)
 
 
 def upload_control_keyboard():
@@ -703,6 +747,7 @@ def upload_success_keyboard(bot_url, web_url, token):
             styled_inline_button("🌐 لینک وب", style="primary", url=web_url),
         ],
         [styled_inline_button("📤 اشتراک‌گذاری", style="primary", url=share_url)],
+        [styled_inline_button("⏱ حذف خودکار ۲۰ ثانیه‌ای", style="danger", callback_data=f"auto_delete_file:{token}")],
         [styled_inline_button("🗑 حذف فایل", style="danger", callback_data=f"delete_file:{token}")],
     ])
 
@@ -719,23 +764,10 @@ def group_success_keyboard(bot_url, web_url, token):
             styled_inline_button("🌐 لینک وب", style="primary", url=web_url),
         ],
         [styled_inline_button("📤 اشتراک‌گذاری", style="primary", url=share_url)],
+        [styled_inline_button("⏱ حذف خودکار ۲۰ ثانیه‌ای", style="danger", callback_data=f"auto_delete_group:{token}")],
         [styled_inline_button("🗑 حذف مجموعه", style="danger", callback_data=f"delete_group:{token}")],
     ])
 
-
-def settings_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [styled_button("👥 لیست کاربران", "primary")],
-            [styled_button("🚫 مدیریت مسدودی", "danger"), styled_button("👑 مدیریت ادمین‌ها", "primary")],
-            [styled_button("🔐 عضویت اجباری", "primary"), styled_button("📊 آمار کلی", "primary")],
-            [styled_button("📁 تنظیمات فایل‌ها", "primary"), styled_button("🌐 تغییر زبان", "primary")],
-            [styled_button("📣 پیام همگانی", "success")],
-            [styled_button("🏠 بازگشت به منوی اصلی", "primary")],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-    )
 
 def block_manage_keyboard():
     return ReplyKeyboardMarkup(
@@ -925,6 +957,55 @@ async def send_item(chat_id, item):
     raise ValueError(f"Unsupported file type: {t}")
 
 
+async def delete_message_later(chat_id: int, message_id: int, delay: int = 20):
+    try:
+        await asyncio.sleep(delay)
+        with suppress(Exception):
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        print("AUTO DELETE ERROR:", repr(e))
+
+
+def set_file_auto_delete(uid: int, token: str, enabled: bool = True) -> bool:
+    c = db()
+    cur = c.execute(
+        "UPDATE files SET auto_delete=? WHERE token=? AND owner_id=? AND active=1",
+        (1 if enabled else 0, token, uid),
+    )
+    c.commit()
+    ok = cur.rowcount > 0
+    c.close()
+    return ok
+
+
+def set_group_auto_delete(uid: int, token: str, enabled: bool = True) -> bool:
+    c = db()
+    cur = c.execute(
+        "UPDATE groups SET auto_delete=? WHERE token=? AND owner_id=? AND active=1",
+        (1 if enabled else 0, token, uid),
+    )
+    c.commit()
+    ok = cur.rowcount > 0
+    c.close()
+    return ok
+
+
+def is_file_auto_delete(token: str) -> bool:
+    c = db()
+    r = c.execute("SELECT auto_delete FROM files WHERE token=? AND active=1", (token,)).fetchone()
+    c.close()
+    return bool(r and r["auto_delete"])
+
+
+def is_group_auto_delete(token: str) -> bool:
+    c = db()
+    r = c.execute("SELECT auto_delete FROM groups WHERE token=? AND active=1", (token,)).fetchone()
+    c.close()
+    return bool(r and r["auto_delete"])
+
+
 # =========================================================
 # UPLOAD PROCESS
 # =========================================================
@@ -1016,6 +1097,42 @@ async def upload_ui_upload(callback: CallbackQuery):
     await upload_single(callback.message)
 
 
+@dp.callback_query(F.data.startswith("auto_delete_file:"))
+async def auto_delete_file_callback(callback: CallbackQuery):
+    uid = callback.from_user.id
+    if not is_admin(uid):
+        return await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+    token = callback.data.split(":", 1)[1]
+    if not set_file_auto_delete(uid, token, True):
+        return await callback.answer("❌ فایل پیدا نشد یا حذف شده است.", show_alert=True)
+    await callback.answer("✅ حذف خودکار ۲۰ ثانیه‌ای فعال شد.", show_alert=True)
+    await callback.message.answer(
+        "⏱ <b>حذف خودکار فعال شد.</b>\n\n"
+        "کاربر وقتی فایل را دریافت کند، پیام فایل بعد از ۲۰ ثانیه حذف می‌شود.\n"
+        "به کاربر بگو فایل را سریعاً در <b>Saved Messages / پیام‌های ذخیره‌شده</b> خودش بفرستد.\n\n"
+        "⚠️ این قابلیت فقط پیام ارسال‌شده توسط ربات را حذف می‌کند؛ اگر کاربر فایل را ذخیره یا فوروارد کند، ربات نمی‌تواند نسخه ذخیره‌شده او را حذف کند.",
+        parse_mode="HTML",
+    )
+
+
+@dp.callback_query(F.data.startswith("auto_delete_group:"))
+async def auto_delete_group_callback(callback: CallbackQuery):
+    uid = callback.from_user.id
+    if not is_admin(uid):
+        return await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+    token = callback.data.split(":", 1)[1]
+    if not set_group_auto_delete(uid, token, True):
+        return await callback.answer("❌ مجموعه پیدا نشد یا حذف شده است.", show_alert=True)
+    await callback.answer("✅ حذف خودکار ۲۰ ثانیه‌ای فعال شد.", show_alert=True)
+    await callback.message.answer(
+        "⏱ <b>حذف خودکار مجموعه فعال شد.</b>\n\n"
+        "پیام‌های فایل‌های این مجموعه بعد از دریافت، ۲۰ ثانیه بعد توسط ربات حذف می‌شوند.\n"
+        "به کاربر بگو فایل‌ها را سریعاً در <b>Saved Messages / پیام‌های ذخیره‌شده</b> خودش بفرستد.\n\n"
+        "⚠️ ربات نمی‌تواند نسخه‌ای را که کاربر ذخیره یا فوروارد کرده حذف کند.",
+        parse_mode="HTML",
+    )
+
+
 @dp.callback_query(F.data.startswith("delete_file:"))
 async def delete_uploaded_file(callback: CallbackQuery):
     token = callback.data.split(":", 1)[1]
@@ -1081,8 +1198,19 @@ async def delete_uploaded_group(callback: CallbackQuery):
 
 @dp.message(Command("start"))
 async def start_handler(message: Message):
+    CURRENT_UI_UID.set(message.from_user.id)
     uid = message.from_user.id
     register_user(uid, message.from_user.username, message.from_user.first_name)
+    CURRENT_UI_UID.set(uid)
+    # Translate localized menu labels back to the canonical Persian labels used by existing handlers.
+    LOCALIZED = {}
+    canonical_main = ["⬆️ آپلود فایل", "📂 آپلود گروهی", "📊 مشاهده فایل‌ها و آمار", "📣 پیام همگانی", "🔴 خاموش کردن ربات", "🟢 روشن کردن ربات", "⚙️ تنظیمات", "👤 حساب من"]
+    canonical_settings = ["👥 لیست کاربران", "🚫 مدیریت مسدودی", "👑 مدیریت ادمین‌ها", "🔐 عضویت اجباری", "📊 آمار کلی", "📁 تنظیمات فایل‌ها", "🌐 تغییر زبان", "📣 پیام همگانی", "🏠 بازگشت به منوی اصلی"]
+    for _lang, _data in LANGS.items():
+        for _i, _txt in enumerate(_data["main"]): LOCALIZED[_txt] = canonical_main[_i]
+        for _i, _txt in enumerate(_data["settings"]): LOCALIZED[_txt] = canonical_settings[_i]
+    if message.text in LOCALIZED:
+        message.text = LOCALIZED[message.text]
     clear_user_state(uid)
 
     if is_blocked(uid):
@@ -1111,8 +1239,20 @@ async def start_handler(message: Message):
                 return await message.answer("❌ فایل پیدا نشد.")
 
             try:
-                await send_item(message.chat.id, dict(row))
+                auto_delete = bool(row["auto_delete"])
+                warning = None
+                if auto_delete:
+                    warning = await message.answer(
+                        "⏱ <b>توجه:</b> این فایل ۲۰ ثانیه دیگر از چت حذف می‌شود.\n\n"
+                        "لطفاً همین الان فایل را در <b>Saved Messages / پیام‌های ذخیره‌شده</b> خودت بفرست.",
+                        parse_mode="HTML",
+                    )
+                sent_message = await send_item(message.chat.id, dict(row))
                 increment_download(row["token"])
+                if auto_delete:
+                    asyncio.create_task(delete_message_later(message.chat.id, sent_message.message_id, 20))
+                    if warning:
+                        asyncio.create_task(delete_message_later(message.chat.id, warning.message_id, 20))
             except Exception as e:
                 print("START FILE ERROR:", repr(e))
                 return await message.answer("❌ ارسال فایل انجام نشد.")
@@ -1137,13 +1277,25 @@ async def start_handler(message: Message):
             )
 
             sent = 0
+            auto_delete = bool(group["auto_delete"])
+            warning = None
+            if auto_delete:
+                warning = await message.answer(
+                    "⏱ <b>توجه:</b> فایل‌های این مجموعه ۲۰ ثانیه دیگر از چت حذف می‌شوند.\n\n"
+                    "لطفاً فایل‌ها را سریعاً در <b>Saved Messages / پیام‌های ذخیره‌شده</b> خودت بفرست.",
+                    parse_mode="HTML",
+                )
             for item in items:
                 try:
-                    await send_item(message.chat.id, dict(item))
+                    sent_message = await send_item(message.chat.id, dict(item))
                     sent += 1
+                    if auto_delete:
+                        asyncio.create_task(delete_message_later(message.chat.id, sent_message.message_id, 20))
                 except Exception as e:
                     print("GROUP SEND ERROR:", repr(e))
 
+            if auto_delete and warning:
+                asyncio.create_task(delete_message_later(message.chat.id, warning.message_id, 20))
             if sent:
                 increment_group_download(group["token"])
             return
@@ -1544,6 +1696,7 @@ async def toggle_bot(message: Message):
 
 @dp.message(F.text == "⚙️ تنظیمات")
 async def settings_handler(message: Message):
+    CURRENT_UI_UID.set(message.from_user.id)
     await send_settings(message)
 
 
@@ -1553,12 +1706,14 @@ async def settings_handler(message: Message):
     "🔙 منوی اصلی",
 }))
 async def back_main(message: Message):
+    CURRENT_UI_UID.set(message.from_user.id)
     clear_user_state(message.from_user.id)
     await message.answer("🏠 منوی اصلی", reply_markup=main_keyboard() if is_admin(message.from_user.id) else None)
 
 
 @dp.message(F.text == "🔙 بازگشت به تنظیمات")
 async def back_settings(message: Message):
+    CURRENT_UI_UID.set(message.from_user.id)
     clear_user_state(message.from_user.id)
     await send_settings(message)
 
@@ -1894,44 +2049,45 @@ async def broadcast_start(message: Message):
 # LANGUAGE
 # =========================================================
 
-@dp.message(F.text == "🌐 تغییر زبان")
-async def language(message: Message):
-    if not is_admin(message.from_user.id):
-        return await message.answer("⛔ دسترسی ندارید.")
-    kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🇮🇷 فارسی"), KeyboardButton(text="🇬🇧 English")],
-            [KeyboardButton(text="🔙 بازگشت به تنظیمات")],
-            [KeyboardButton(text="🏠 منوی اصلی")],
-        ],
-        resize_keyboard=True,
-    )
-    await message.answer("🌐 زبان را انتخاب کن:", reply_markup=kb)
+LANGUAGE_BUTTON_TEXTS = {data["settings"][6] for data in LANGS.values()}
 
+@dp.message(F.text.in_(LANGUAGE_BUTTON_TEXTS))
+async def language(message: Message):
+    uid = message.from_user.id
+    if not is_admin(uid):
+        return await message.answer("⛔ دسترسی ندارید.")
+    CURRENT_UI_UID.set(uid)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=LANGS["fa"]["name"], callback_data="lang:fa"), InlineKeyboardButton(text=LANGS["en"]["name"], callback_data="lang:en")],
+        [InlineKeyboardButton(text=LANGS["ar"]["name"], callback_data="lang:ar"), InlineKeyboardButton(text=LANGS["tr"]["name"], callback_data="lang:tr")],
+        [InlineKeyboardButton(text=LANGS["ru"]["name"], callback_data="lang:ru"), InlineKeyboardButton(text=LANGS["de"]["name"], callback_data="lang:de")],
+    ])
+    await message.answer(tr(uid, "choose_language"), reply_markup=kb)
+
+@dp.callback_query(F.data.startswith("lang:"))
+async def language_callback(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        return await callback.answer("⛔ Access denied", show_alert=True)
+    lang = callback.data.split(":", 1)[1]
+    if lang not in LANGS:
+        return await callback.answer("Invalid language", show_alert=True)
+    uid = callback.from_user.id
+    await set_language(uid, lang)
+    CURRENT_UI_UID.set(uid)
+    await callback.message.edit_text(tr(uid, "language_saved"))
+    # Replace the old reply keyboard immediately; this is the part that was
+    # missing when switching languages from a localized Settings menu.
+    await callback.message.answer(tr(uid, "language_saved"), reply_markup=settings_keyboard())
+    await callback.answer("✅")
 
 async def set_language(uid, lang):
     c = db()
     c.execute("""
         INSERT INTO user_settings(user_id, language, updated_at)
         VALUES(?,?,CURRENT_TIMESTAMP)
-        ON CONFLICT(user_id) DO UPDATE SET
-            language=excluded.language,
-            updated_at=CURRENT_TIMESTAMP
+        ON CONFLICT(user_id) DO UPDATE SET language=excluded.language, updated_at=CURRENT_TIMESTAMP
     """, (uid, lang))
-    c.commit()
-    c.close()
-
-
-@dp.message(F.text == "🇮🇷 فارسی")
-async def fa(message: Message):
-    await set_language(message.from_user.id, "fa")
-    await message.answer("✅ فارسی فعال شد.", reply_markup=settings_keyboard())
-
-
-@dp.message(F.text == "🇬🇧 English")
-async def en(message: Message):
-    await set_language(message.from_user.id, "en")
-    await message.answer("✅ English enabled.", reply_markup=settings_keyboard())
+    c.commit(); c.close()
 
 
 # =========================================================
@@ -2093,6 +2249,7 @@ MENU_TEXTS = {
 
 @dp.message(F.text)
 async def text_router(message: Message):
+    CURRENT_UI_UID.set(message.from_user.id)
     uid = message.from_user.id
     register_user(uid, message.from_user.username, message.from_user.first_name)
 
@@ -2115,6 +2272,20 @@ async def text_router(message: Message):
     if message.text == "🇬🇧 English":
         await set_language(uid, "en")
         return await message.answer("✅ English enabled.", reply_markup=settings_keyboard())
+
+    # Localized main/settings buttons need to execute the same handlers as Persian buttons.
+    localized_handlers = {
+        "⬆️ آپلود فایل": upload_single, "📂 آپلود گروهی": upload_group,
+        "📊 مشاهده فایل‌ها و آمار": stats_dashboard, "📣 پیام همگانی": broadcast_start,
+        "🔴 خاموش کردن ربات": toggle_bot, "🟢 روشن کردن ربات": toggle_bot,
+        "⚙️ تنظیمات": settings_handler, "👤 حساب من": account_handler,
+        "👥 لیست کاربران": users_list, "🚫 مدیریت مسدودی": block_management,
+        "👑 مدیریت ادمین‌ها": admin_management, "🔐 عضویت اجباری": join_management,
+        "📊 آمار کلی": admin_stats, "📁 تنظیمات فایل‌ها": file_settings,
+        "🌐 تغییر زبان": language, "🏠 بازگشت به منوی اصلی": back_main,
+    }
+    if message.text in localized_handlers:
+        return await localized_handlers[message.text](message)
 
     if message.text in MENU_TEXTS:
         return
