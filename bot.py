@@ -670,12 +670,12 @@ from contextvars import ContextVar
 CURRENT_UI_UID = ContextVar("CURRENT_UI_UID", default=None)
 
 LANGS = {
-    "fa": {"name": "🇮🇷 فارسی", "main": ["⬆️ آپلود فایل", "📂 آپلود گروهی", "📊 مشاهده فایل‌ها و آمار", "📣 پیام همگانی", "🔴 خاموش کردن ربات", "🟢 روشن کردن ربات", "⚙️ تنظیمات", "👤 حساب من"], "settings": ["👥 لیست کاربران", "🚫 مدیریت مسدودی", "👑 مدیریت ادمین‌ها", "🔐 عضویت اجباری", "📊 آمار کلی", "📁 تنظیمات فایل‌ها", "🌐 تغییر زبان", "📣 پیام همگانی", "🏠 بازگشت به منوی اصلی"]},
-    "en": {"name": "🇬🇧 English", "main": ["⬆️ Upload File", "📂 Bulk Upload", "📊 Files & Stats", "📣 Broadcast", "🔴 Turn Bot Off", "🟢 Turn Bot On", "⚙️ Settings", "👤 My Account"], "settings": ["👥 Users", "🚫 Block Management", "👑 Admin Management", "🔐 Force Join", "📊 Statistics", "📁 File Settings", "🌐 Change Language", "📣 Broadcast", "🏠 Main Menu"]},
-    "ar": {"name": "🇸🇦 العربية", "main": ["⬆️ رفع ملف", "📂 رفع جماعي", "📊 الملفات والإحصائيات", "📣 إرسال جماعي", "🔴 إيقاف البوت", "🟢 تشغيل البوت", "⚙️ الإعدادات", "👤 حسابي"], "settings": ["👥 المستخدمون", "🚫 إدارة الحظر", "👑 إدارة المشرفين", "🔐 الاشتراك الإجباري", "📊 الإحصائيات", "📁 إعدادات الملفات", "🌐 تغيير اللغة", "📣 إرسال جماعي", "🏠 القائمة الرئيسية"]},
-    "tr": {"name": "🇹🇷 Türkçe", "main": ["⬆️ Dosya Yükle", "📂 Toplu Yükleme", "📊 Dosyalar & İstatistik", "📣 Toplu Mesaj", "🔴 Botu Kapat", "🟢 Botu Aç", "⚙️ Ayarlar", "👤 Hesabım"], "settings": ["👥 Kullanıcılar", "🚫 Engelleme Yönetimi", "👑 Yönetici Yönetimi", "🔐 Zorunlu Katılım", "📊 İstatistikler", "📁 Dosya Ayarları", "🌐 Dil Değiştir", "📣 Toplu Mesaj", "🏠 Ana Menü"]},
-    "ru": {"name": "🇷🇺 Русский", "main": ["⬆️ Загрузить файл", "📂 Массовая загрузка", "📊 Файлы и статистика", "📣 Рассылка", "🔴 Выключить бота", "🟢 Включить бота", "⚙️ Настройки", "👤 Мой аккаунт"], "settings": ["👥 Пользователи", "🚫 Управление блокировками", "👑 Управление администраторами", "🔐 Обязательная подписка", "📊 Статистика", "📁 Настройки файлов", "🌐 Изменить язык", "📣 Рассылка", "🏠 Главное меню"]},
-    "de": {"name": "🇩🇪 Deutsch", "main": ["⬆️ Datei hochladen", "📂 Mehrere Dateien", "📊 Dateien & Statistik", "📣 Rundnachricht", "🔴 Bot ausschalten", "🟢 Bot einschalten", "⚙️ Einstellungen", "👤 Mein Konto"], "settings": ["👥 Benutzer", "🚫 Sperrverwaltung", "👑 Admin-Verwaltung", "🔐 Pflichtbeitritt", "📊 Statistik", "📁 Dateieinstellungen", "🌐 Sprache ändern", "📣 Rundnachricht", "🏠 Hauptmenü"]},
+    "fa": {"name": "🇮🇷 فارسی", "main": ["⬆️ آپلود فایل", "📂 آپلود گروهی", "📊 مشاهده فایل‌ها و آمار", "📣 پیام همگانی", "🔴 خاموش کردن ربات", "🟢 روشن کردن ربات", "⚙️ تنظیمات"], "settings": ["👥 لیست کاربران", "🚫 مدیریت مسدودی", "👑 مدیریت ادمین‌ها", "🔐 عضویت اجباری", "📊 آمار کلی", "📁 تنظیمات فایل‌ها", "🌐 تغییر زبان", "📣 پیام همگانی", "🏠 بازگشت به منوی اصلی"]},
+    "en": {"name": "🇬🇧 English", "main": ["⬆️ Upload File", "📂 Bulk Upload", "📊 Files & Stats", "📣 Broadcast", "🔴 Turn Bot Off", "🟢 Turn Bot On", "⚙️ Settings"], "settings": ["👥 Users", "🚫 Block Management", "👑 Admin Management", "🔐 Force Join", "📊 Statistics", "📁 File Settings", "🌐 Change Language", "📣 Broadcast", "🏠 Main Menu"]},
+    "ar": {"name": "🇸🇦 العربية", "main": ["⬆️ رفع ملف", "📂 رفع جماعي", "📊 الملفات والإحصائيات", "📣 إرسال جماعي", "🔴 إيقاف البوت", "🟢 تشغيل البوت", "⚙️ الإعدادات"], "settings": ["👥 المستخدمون", "🚫 إدارة الحظر", "👑 إدارة المشرفين", "🔐 الاشتراك الإجباري", "📊 الإحصائيات", "📁 إعدادات الملفات", "🌐 تغيير اللغة", "📣 إرسال جماعي", "🏠 القائمة الرئيسية"]},
+    "tr": {"name": "🇹🇷 Türkçe", "main": ["⬆️ Dosya Yükle", "📂 Toplu Yükleme", "📊 Dosyalar & İstatistik", "📣 Toplu Mesaj", "🔴 Botu Kapat", "🟢 Botu Aç", "⚙️ Ayarlar"], "settings": ["👥 Kullanıcılar", "🚫 Engelleme Yönetimi", "👑 Yönetici Yönetimi", "🔐 Zorunlu Katılım", "📊 İstatistikler", "📁 Dosya Ayarları", "🌐 Dil Değiştir", "📣 Toplu Mesaj", "🏠 Ana Menü"]},
+    "ru": {"name": "🇷🇺 Русский", "main": ["⬆️ Загрузить файл", "📂 Массовая загрузка", "📊 Файлы и статистика", "📣 Рассылка", "🔴 Выключить бота", "🟢 Включить бота", "⚙️ Настройки"], "settings": ["👥 Пользователи", "🚫 Управление блокировками", "👑 Управление администраторами", "🔐 Обязательная подписка", "📊 Статистика", "📁 Настройки файлов", "🌐 Изменить язык", "📣 Рассылка", "🏠 Главное меню"]},
+    "de": {"name": "🇩🇪 Deutsch", "main": ["⬆️ Datei hochladen", "📂 Mehrere Dateien", "📊 Dateien & Statistik", "📣 Rundnachricht", "🔴 Bot ausschalten", "🟢 Bot einschalten", "⚙️ Einstellungen"], "settings": ["👥 Benutzer", "🚫 Sperrverwaltung", "👑 Admin-Verwaltung", "🔐 Pflichtbeitritt", "📊 Statistik", "📁 Dateieinstellungen", "🌐 Sprache ändern", "📣 Rundnachricht", "🏠 Hauptmenü"]},
 }
 
 async def get_language(uid):
@@ -707,7 +707,6 @@ def main_keyboard():
         [styled_button(items[0], "success"), styled_button(items[1], "success")],
         [styled_button(items[2], "primary"), styled_button(items[3], "primary")],
         [styled_button(toggle_text, toggle_style), styled_button(items[6], "primary")],
-        [styled_button(items[7], "primary")],
     ], resize_keyboard=True, is_persistent=True)
 
 
@@ -2123,7 +2122,7 @@ async def my_stats(message: Message):
     )
 
 
-@dp.message(F.text.in_({'👤 حساب من', '👤 My Account', '👤 حسابي', '👤 Hesabım', '👤 Мой аккаунт', '👤 Mein Konto'}))
+@dp.message(F.text == "__ACCOUNT_REMOVED__")
 async def account(message: Message):
     await message.answer(
         "👤 <b>حساب شما</b>\n\n"
@@ -2264,6 +2263,12 @@ async def text_router(message: Message):
 
     if message.text.startswith("/"):
         return
+
+    # If an upload session is active, ordinary text must be treated as an upload item
+    # before the generic menu router. This fixes text uploads being silently ignored.
+    if upload_modes.get(uid) and is_admin(uid):
+        if message.text not in {"❌ انصراف", "✅ پایان"}:
+            return await process_upload(message)
 
     # Menu messages have dedicated handlers.
     if message.text == "🇮🇷 فارسی":
