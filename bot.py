@@ -170,6 +170,11 @@ def init_db():
 
     c.execute("""
         INSERT OR IGNORE INTO bot_settings(key, value)
+        VALUES('auto_delete_20', '0')
+    """)
+
+    c.execute("""
+        INSERT OR IGNORE INTO bot_settings(key, value)
         VALUES('start_text', '👋 خوش آمدی!
 
 🤖 به ربات آپلود فایل خوش آمدی.')
@@ -712,6 +717,7 @@ def settings_keyboard(uid=None):
             [styled_button(d["stats"],"primary"), styled_button(d["file_settings"],"primary")],
             [styled_button(d["broadcast"],"success")],
             [styled_button(d["start_view"],"primary")],
+            [styled_button(f"🗑 حذف خودکار ۲۰ ثانیه‌ای: {'روشن 🟢' if setting('auto_delete_20','0') == '1' else 'خاموش 🔴'}", "danger" if setting('auto_delete_20','0') == '1' else "primary")],
             [styled_button(d["back"],"primary")],
         ],
         resize_keyboard=True,
@@ -890,6 +896,34 @@ async def send_item(chat_id, item):
 
 
 # =========================================================
+# AUTO DELETE
+# =========================================================
+
+async def _delete_later(chat_id, message_ids, delay=20):
+    await asyncio.sleep(delay)
+    for mid in message_ids:
+        try:
+            await bot.delete_message(chat_id, mid)
+        except Exception as e:
+            print("AUTO DELETE FAILED:", repr(e))
+
+async def auto_delete_sent_messages(chat_id, sent_messages):
+    if setting("auto_delete_20", "0") != "1":
+        return
+    ids = [m.message_id for m in sent_messages if m is not None]
+    if not ids:
+        return
+    try:
+        warning = await bot.send_message(
+            chat_id,
+            "⚠️ این فایل را در Saved Messages ذخیره کن؛ ۲۰ ثانیه دیگر پیام حذف می‌شود.",
+        )
+        ids.append(warning.message_id)
+    except Exception as e:
+        print("AUTO DELETE WARNING ERROR:", repr(e))
+    asyncio.create_task(_delete_later(chat_id, ids, 20))
+
+# =========================================================
 # UPLOAD PROCESS
 # =========================================================
 
@@ -1065,8 +1099,10 @@ async def start_handler(message: Message):
                 return await message.answer("❌ فایل پیدا نشد.")
 
             try:
-                await send_item(message.chat.id, dict(row))
+                sent_message = await send_item(message.chat.id, dict(row))
                 increment_download(row["token"])
+                if not is_admin(uid):
+                    await auto_delete_sent_messages(message.chat.id, [sent_message])
                 if is_admin(uid):
                     username=await bot_username(); bot_url=tg_link(username,"file",row["token"]); web_url=f"{BASE_URL}/f/{row['token']}"
                     await message.answer("🛠 <b>مدیریت فایل</b>",parse_mode="HTML",reply_markup=upload_success_keyboard(bot_url,web_url,row["token"]))
@@ -1093,15 +1129,19 @@ async def start_handler(message: Message):
             )
 
             sent = 0
+            sent_messages = []
             for item in items:
                 try:
-                    await send_item(message.chat.id, dict(item))
+                    sm = await send_item(message.chat.id, dict(item))
+                    sent_messages.append(sm)
                     sent += 1
                 except Exception as e:
                     print("GROUP SEND ERROR:", repr(e))
 
             if sent:
                 increment_group_download(group["token"])
+                if not is_admin(uid):
+                    await auto_delete_sent_messages(message.chat.id, sent_messages)
             if is_admin(uid):
                 username=await bot_username(); bot_url=tg_link(username,"group",group["token"]); web_url=f"{BASE_URL}/g/{group['token']}"
                 await message.answer("🛠 <b>مدیریت مجموعه</b>",parse_mode="HTML",reply_markup=group_success_keyboard(bot_url,web_url,group["token"]))
@@ -1424,6 +1464,40 @@ async def toggle_bot(message: Message):
         reply_markup=main_keyboard(),
     )
 
+
+@dp.message(F.text == "👀 مشاهده استارت از دید کاربر")
+async def start_preview(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    text = setting("start_text", "👋 خوش آمدی!")
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✏️ ویرایش متن استارت", callback_data="edit_start_text")
+    ]])
+    await message.answer("👀 <b>نمایش استارت از دید کاربر:</b>", parse_mode="HTML")
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+@dp.callback_query(F.data == "edit_start_text")
+async def edit_start_text_callback(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        return await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+    admin_actions[callback.from_user.id] = "edit_start"
+    upload_modes.pop(callback.from_user.id, None)
+    upload_items.pop(callback.from_user.id, None)
+    await callback.answer()
+    await callback.message.answer("✏️ متن جدید استارت را ارسال کن. متن دقیقاً همان‌طور که ذخیره شود نمایش داده می‌شود.")
+
+@dp.message(F.text.startswith("🗑 حذف خودکار ۲۰ ثانیه‌ای:"))
+async def toggle_auto_delete(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    new_value = "0" if setting("auto_delete_20", "0") == "1" else "1"
+    set_setting("auto_delete_20", new_value)
+    status = "روشن 🟢" if new_value == "1" else "خاموش 🔴"
+    await message.answer(
+        f"🗑 حذف خودکار ۲۰ ثانیه‌ای {status} شد.\n\n"
+        "وقتی کاربر فایل یا مجموعه را دریافت کند، ربات هشدار می‌دهد که آن را در Saved Messages ذخیره کند و ۲۰ ثانیه بعد پیام فایل‌ها را حذف می‌کند.",
+        reply_markup=settings_keyboard(message.from_user.id),
+    )
 
 @dp.message(F.text == "⚙️ تنظیمات")
 async def settings_handler(message: Message):
