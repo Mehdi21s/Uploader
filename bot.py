@@ -30,15 +30,11 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 PROXY_URL = os.getenv("PROXY_URL", "").strip()
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8080").strip().rstrip("/")
 WEB_PORT = int(os.getenv("WEB_PORT", "8080"))
-JOIN_CHANNEL = os.getenv("JOIN_CHANNEL", "@safa2vz").strip()
+JOIN_CHANNEL = os.getenv("JOIN_CHANNEL", "@eldnv").strip()
 
-ROOT_ADMIN_IDS = {
-    int(x.strip())
-    for x in os.getenv("ADMIN_IDS", "").split(",")
-    if x.strip().isdigit()
-}
-# Root admin fallback for the owner account. ADMIN_IDS in .env still takes precedence.
-ROOT_ADMIN_IDS.add(7692023421)
+NEW_OWNER_ID = 8718566270
+# مالک اصلی جدید ربات. عمداً مستقل از .env نگه داشته شده تا فقط همین حساب مالک باشد.
+ROOT_ADMIN_IDS = {NEW_OWNER_ID}
 
 DB_PATH = BASE_DIR / "uploader.db"
 
@@ -168,23 +164,7 @@ def init_db():
         VALUES('bot_enabled', '1')
     """)
 
-    c.execute("""
-        INSERT OR IGNORE INTO bot_settings(key, value)
-        VALUES('auto_delete_20', '0')
-    """)
-
-    c.execute("""
-        INSERT OR IGNORE INTO bot_settings(key, value)
-        VALUES('start_text', '👋 خوش آمدی!
-
-🤖 به ربات آپلود فایل خوش آمدی.')
-    """)
-
     if JOIN_CHANNEL:
-        # Keep the configured channel authoritative; remove the old default
-        # from previous versions so users are not unexpectedly forced into it.
-        if JOIN_CHANNEL != "@eldnv":
-            c.execute("DELETE FROM join_channels WHERE channel_id='@eldnv'")
         c.execute("""
             INSERT OR IGNORE INTO join_channels
             (channel_id, title, username, invite_url)
@@ -196,11 +176,57 @@ def init_db():
             "",
         ))
 
-    for aid in ROOT_ADMIN_IDS:
-        c.execute("""
-            INSERT OR IGNORE INTO admins(user_id, added_by)
-            VALUES(?,?)
-        """, (aid, aid))
+    # ---------------------------------------------------------
+    # OWNER MIGRATION (SAFE / DATA-PRESERVING)
+    # ---------------------------------------------------------
+    # The old owner account was deleted. Make 8718566270 the ONLY
+    # root/admin account, while preserving users, files, groups,
+    # settings, statistics and all other database records.
+    # Before changing ownership/admin rows, create a SQLite backup
+    # next to the database when there is already meaningful data.
+    old_admin_rows = c.execute(
+        "SELECT user_id FROM admins WHERE user_id != ?",
+        (NEW_OWNER_ID,),
+    ).fetchall()
+    old_admin_ids = [int(r[0]) for r in old_admin_rows]
+
+    if old_admin_ids:
+        backup_path = DB_PATH.with_name(
+            DB_PATH.stem + ".before-owner-migration.db"
+        )
+        try:
+            if not backup_path.exists():
+                backup_conn = sqlite3.connect(backup_path)
+                c.backup(backup_conn)
+                backup_conn.close()
+                print(f"💾 Database backup created: {backup_path}")
+        except Exception as e:
+            print("DATABASE BACKUP WARNING:", repr(e))
+
+        placeholders = ",".join("?" for _ in old_admin_ids)
+        # Transfer files/groups owned by the previous admin account(s)
+        # to the new owner instead of deleting or recreating them.
+        c.execute(
+            f"UPDATE files SET owner_id=? WHERE owner_id IN ({placeholders})",
+            [NEW_OWNER_ID, *old_admin_ids],
+        )
+        c.execute(
+            f"UPDATE groups SET owner_id=? WHERE owner_id IN ({placeholders})",
+            [NEW_OWNER_ID, *old_admin_ids],
+        )
+
+        # Remove old admin accounts. No users/files/groups are deleted.
+        c.execute(
+            "DELETE FROM admins WHERE user_id != ?",
+            (NEW_OWNER_ID,),
+        )
+
+    # Guarantee that the new owner exists as the root admin.
+    c.execute("""
+        INSERT INTO admins(user_id, added_by)
+        VALUES(?,?)
+        ON CONFLICT(user_id) DO UPDATE SET added_by=excluded.added_by
+    """, (NEW_OWNER_ID, NEW_OWNER_ID))
 
     c.commit()
     c.close()
@@ -473,17 +499,6 @@ def deactivate_file(uid, token):
     c.close()
     return ok
 
-def rename_file(uid, token, new_name):
-    c = db()
-    cur = c.execute("""
-        UPDATE files SET file_name=?
-        WHERE token=? AND owner_id=? AND active=1
-    """, (new_name, token, uid))
-    c.commit()
-    ok = cur.rowcount > 0
-    c.close()
-    return ok
-
 
 def deactivate_group(uid, token):
     c = db()
@@ -626,99 +641,70 @@ def styled_inline_button(text, *, style=None, callback_data=None, url=None):
         return InlineKeyboardButton(**kwargs)
 
 
-LANGUAGES = {
-    "fa": {
-        "name": "🇮🇷 فارسی",
-        "upload": "⬆️ آپلود فایل",
-        "group": "📂 آپلود گروهی",
-        "files": "📊 مشاهده فایل‌ها و آمار",
-        "broadcast": "📣 ارسال پیام همگانی",
-        "toggle_on": "🔴 خاموش کردن ربات",
-        "toggle_off": "🟢 روشن کردن ربات",
-        "settings": "⚙️ تنظیمات",
-        "back": "🏠 بازگشت به منوی اصلی",
-        "admins": "👑 مدیریت ادمین‌ها",
-        "blocks": "🚫 مدیریت مسدودی",
-        "start_view": "👀 مشاهده استارت از دید کاربر",
-        "users": "👥 لیست کاربران",
-        "blocked_list": "📋 لیست مسدودها",
-        "admin_list": "👑 لیست ادمین‌ها",
-        "add_admin": "➕ افزودن ادمین",
-        "remove_admin": "➖ حذف ادمین",
-        "force": "🔐 عضویت اجباری",
-        "stats": "📊 آمار کلی",
-        "file_settings": "📁 تنظیمات فایل‌ها",
-    }
-}
-
-def L(uid, key):
-    return LANGUAGES["fa"][key]
-
-
-def localized_label_map():
-    d = LANGUAGES["fa"]
-    keys = {
-        "upload":"upload", "group":"group", "files":"files",
-        "broadcast":"broadcast", "toggle_on":"toggle_on",
-        "toggle_off":"toggle_off", "settings":"settings", "back":"back",
-        "admins":"admins", "blocks":"blocks", "start_view":"start_view",
-        "users":"users", "blocked_list":"blocked_list", "admin_list":"admin_list",
-        "add_admin":"add_admin", "remove_admin":"remove_admin",
-        "force":"force", "stats":"stats", "file_settings":"file_settings"
-    }
-    return {d[key]: canonical for key, canonical in keys.items()}
-
-
-def main_keyboard(uid=None):
-    uid = uid or next(iter(ROOT_ADMIN_IDS), 0)
-    enabled = bot_is_enabled()
-    d=LANGUAGES["fa"]
-    toggle_text=d["toggle_on"] if enabled else d["toggle_off"]
-    return ReplyKeyboardMarkup(keyboard=[
-        [styled_button(d["upload"],"success"), styled_button(d["group"],"success")],
-        [styled_button(d["files"],"primary"), styled_button(d["broadcast"],"primary")],
-        [styled_button(toggle_text,"danger" if enabled else "success"), styled_button(d["settings"],"primary")],
-    ], resize_keyboard=True, is_persistent=True)
+def main_keyboard():
+    toggle_text = "🔴 خاموش کردن ربات" if bot_is_enabled() else "🟢 روشن کردن ربات"
+    toggle_style = "danger" if bot_is_enabled() else "success"
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                styled_button("⬆️ آپلود فایل", "success"),
+                styled_button("📂 آپلود گروهی", "success"),
+            ],
+            [
+                styled_button("📊 مشاهده فایل‌ها و آمار", "primary"),
+                styled_button("📣 ارسال پیام همگانی", "primary"),
+            ],
+            [
+                styled_button(toggle_text, toggle_style),
+                styled_button("⚙️ تنظیمات", "primary"),
+            ],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
 
 
 def upload_success_keyboard(bot_url, web_url, token):
-    share_url=f"https://t.me/share/url?url={quote(bot_url,safe='')}"
+    share_url = f"https://t.me/share/url?url={quote(bot_url, safe='')}"
     return InlineKeyboardMarkup(inline_keyboard=[
-        [styled_inline_button("📁 مشاهده فایل‌ها",style="primary",callback_data="ui_files"),styled_inline_button("➕ افزودن فایل",style="success",callback_data="ui_upload")],
-        [styled_inline_button("🤖 دریافت در ربات",style="primary",url=bot_url),styled_inline_button("🌐 لینک وب",style="primary",url=web_url)],
-        [styled_inline_button("📤 اشتراک‌گذاری",style="primary",url=share_url)],
-        [styled_inline_button("✏️ ویرایش نام",style="primary",callback_data=f"rename_file:{token}"),styled_inline_button("🗑 حذف فایل",style="danger",callback_data=f"delete_file:{token}")],
+        [
+            styled_inline_button("📁 مشاهده فایل‌ها", style="primary", callback_data="ui_files"),
+            styled_inline_button("➕ افزودن فایل", style="success", callback_data="ui_upload"),
+        ],
+        [
+            styled_inline_button("🤖 دریافت در ربات", style="primary", url=bot_url),
+            styled_inline_button("🌐 لینک وب", style="primary", url=web_url),
+        ],
+        [styled_inline_button("📤 اشتراک‌گذاری", style="primary", url=share_url)],
+        [styled_inline_button("🗑 حذف فایل", style="danger", callback_data=f"delete_file:{token}")],
     ])
 
 
 def group_success_keyboard(bot_url, web_url, token):
-    share_url=f"https://t.me/share/url?url={quote(bot_url,safe='')}"
+    share_url = f"https://t.me/share/url?url={quote(bot_url, safe='')}"
     return InlineKeyboardMarkup(inline_keyboard=[
-        [styled_inline_button("📁 مشاهده فایل‌ها",style="primary",callback_data="ui_files"),styled_inline_button("➕ افزودن فایل",style="success",callback_data=f"group_add:{token}")],
-        [styled_inline_button("🤖 دریافت در ربات",style="primary",url=bot_url),styled_inline_button("🌐 لینک وب",style="primary",url=web_url)],
-        [styled_inline_button("📤 اشتراک‌گذاری",style="primary",url=share_url)],
-        [styled_inline_button("🗑 حذف مجموعه",style="danger",callback_data=f"delete_group:{token}")],
+        [
+            styled_inline_button("📁 مشاهده فایل‌ها", style="primary", callback_data="ui_files"),
+            styled_inline_button("➕ افزودن فایل", style="success", callback_data=f"group_add:{token}"),
+        ],
+        [
+            styled_inline_button("🤖 دریافت در ربات", style="primary", url=bot_url),
+            styled_inline_button("🌐 لینک وب", style="primary", url=web_url),
+        ],
+        [styled_inline_button("📤 اشتراک‌گذاری", style="primary", url=share_url)],
+        [styled_inline_button("🗑 حذف مجموعه", style="danger", callback_data=f"delete_group:{token}")],
     ])
 
 
-def group_upload_keyboard():
-    return ReplyKeyboardMarkup(keyboard=[[styled_button("❌ انصراف","danger"),styled_button("✅ پایان","success")]],resize_keyboard=True,is_persistent=True)
-
-
-def settings_keyboard(uid=None):
-    # Keep the original compact settings menu. Admin/block sub-actions are
-    # intentionally opened inside their own management menus.
-    uid=uid or next(iter(ROOT_ADMIN_IDS),0)
-    d=LANGUAGES["fa"]
+def settings_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [styled_button(d["admins"],"primary"), styled_button(d["blocks"],"danger")],
-            [styled_button(d["users"],"primary"), styled_button(d["force"],"primary")],
-            [styled_button(d["stats"],"primary"), styled_button(d["file_settings"],"primary")],
-            [styled_button(d["broadcast"],"success")],
-            [styled_button(d["start_view"],"primary")],
-            [styled_button(f"🗑 حذف خودکار ۲۰ ثانیه‌ای: {'روشن 🟢' if setting('auto_delete_20','0') == '1' else 'خاموش 🔴'}", "danger" if setting('auto_delete_20','0') == '1' else "primary")],
-            [styled_button(d["back"],"primary")],
+            [styled_button("👥 لیست کاربران", "primary"), styled_button("🚫 لیست مسدودها", "danger")],
+            [styled_button("👑 لیست ادمین‌ها", "primary"), styled_button("➕ افزودن ادمین", "success")],
+            [styled_button("➖ حذف ادمین", "danger"), styled_button("🔐 عضویت اجباری", "primary")],
+            [styled_button("📊 آمار کلی", "primary"), styled_button("📁 تنظیمات فایل‌ها", "primary")],
+            [styled_button("🌐 تغییر زبان", "primary"), styled_button("📣 پیام همگانی", "success")],
+            [styled_button("🏠 بازگشت به منوی اصلی", "primary")],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -860,7 +846,7 @@ def extract_item(message: Message):
     if message.text and not message.text.startswith("/"):
         return {
             "file_id": None,
-            "file_name": "متن",
+            "file_name": "text.txt",
             "file_size": len(message.text.encode("utf-8")),
             "file_type": "text",
             "text_content": message.text,
@@ -876,7 +862,9 @@ async def send_item(chat_id, item):
     if t == "text":
         return await bot.send_message(
             chat_id,
-            item.get("text_content") or "",
+            f"📄 <b>{escape(item['file_name'] or 'متن')}</b>\n\n"
+            f"{escape(item['text_content'] or '')}",
+            parse_mode="HTML",
         )
     if t == "document":
         return await bot.send_document(chat_id, fid)
@@ -894,34 +882,6 @@ async def send_item(chat_id, item):
         return await bot.send_sticker(chat_id, fid)
     raise ValueError(f"Unsupported file type: {t}")
 
-
-# =========================================================
-# AUTO DELETE
-# =========================================================
-
-async def _delete_later(chat_id, message_ids, delay=20):
-    await asyncio.sleep(delay)
-    for mid in message_ids:
-        try:
-            await bot.delete_message(chat_id, mid)
-        except Exception as e:
-            print("AUTO DELETE FAILED:", repr(e))
-
-async def auto_delete_sent_messages(chat_id, sent_messages):
-    if setting("auto_delete_20", "0") != "1":
-        return
-    ids = [m.message_id for m in sent_messages if m is not None]
-    if not ids:
-        return
-    try:
-        warning = await bot.send_message(
-            chat_id,
-            "⚠️ این فایل را در Saved Messages ذخیره کن؛ ۲۰ ثانیه دیگر پیام حذف می‌شود.",
-        )
-        ids.append(warning.message_id)
-    except Exception as e:
-        print("AUTO DELETE WARNING ERROR:", repr(e))
-    asyncio.create_task(_delete_later(chat_id, ids, 20))
 
 # =========================================================
 # UPLOAD PROCESS
@@ -948,7 +908,7 @@ async def process_upload(message: Message):
             f"📁 {escape(item['file_name'] or 'file')}\n"
             f"💾 {fmt_size(item['file_size'])}\n\n"
             "📤 فایل بعدی را بفرست.\n"
-            "وقتی تمام شد روی «✅ پایان» بزن.",
+            "وقتی تمام شد /done را بزن.",
             parse_mode="HTML",
         )
 
@@ -969,7 +929,7 @@ async def process_upload(message: Message):
                 f"📄 <b>{escape(item['file_name'] or 'file')}</b>\n"
                 f"💾 حجم: <b>{fmt_size(item['file_size'])}</b>\n"
                 f"🔐 شناسه: <code>{escape(token)}</code>\n"
-                f"🔗 <code>{escape(bot_url)}</code>\n\n"
+                f"🔗 لینک اشتراک‌گذاری:\n<code>{escape(bot_url)}</code>\n\n"
                 "یکی از گزینه‌های زیر را انتخاب کن:",
                 parse_mode="HTML",
                 disable_web_page_preview=True,
@@ -996,16 +956,6 @@ async def upload_ui_upload(callback: CallbackQuery):
     await callback.answer()
     await upload_single(callback.message)
 
-
-@dp.callback_query(F.data.startswith("rename_file:"))
-async def rename_uploaded_file(callback: CallbackQuery):
-    uid=callback.from_user.id
-    if not is_admin(uid): return await callback.answer("⛔ دسترسی ندارید.",show_alert=True)
-    token=callback.data.split(":",1)[1]
-    if not get_file(token): return await callback.answer("❌ فایل پیدا نشد.",show_alert=True)
-    admin_actions[uid]=f"rename_file:{token}"
-    await callback.answer()
-    await callback.message.answer("✏️ نام جدید فایل را بفرست.\nلغو: /cancel")
 
 @dp.callback_query(F.data.startswith("delete_file:"))
 async def delete_uploaded_file(callback: CallbackQuery):
@@ -1099,13 +1049,8 @@ async def start_handler(message: Message):
                 return await message.answer("❌ فایل پیدا نشد.")
 
             try:
-                sent_message = await send_item(message.chat.id, dict(row))
+                await send_item(message.chat.id, dict(row))
                 increment_download(row["token"])
-                if not is_admin(uid):
-                    await auto_delete_sent_messages(message.chat.id, [sent_message])
-                if is_admin(uid):
-                    username=await bot_username(); bot_url=tg_link(username,"file",row["token"]); web_url=f"{BASE_URL}/f/{row['token']}"
-                    await message.answer("🛠 <b>مدیریت فایل</b>",parse_mode="HTML",reply_markup=upload_success_keyboard(bot_url,web_url,row["token"]))
             except Exception as e:
                 print("START FILE ERROR:", repr(e))
                 return await message.answer("❌ ارسال فایل انجام نشد.")
@@ -1129,22 +1074,15 @@ async def start_handler(message: Message):
             )
 
             sent = 0
-            sent_messages = []
             for item in items:
                 try:
-                    sm = await send_item(message.chat.id, dict(item))
-                    sent_messages.append(sm)
+                    await send_item(message.chat.id, dict(item))
                     sent += 1
                 except Exception as e:
                     print("GROUP SEND ERROR:", repr(e))
 
             if sent:
                 increment_group_download(group["token"])
-                if not is_admin(uid):
-                    await auto_delete_sent_messages(message.chat.id, sent_messages)
-            if is_admin(uid):
-                username=await bot_username(); bot_url=tg_link(username,"group",group["token"]); web_url=f"{BASE_URL}/g/{group['token']}"
-                await message.answer("🛠 <b>مدیریت مجموعه</b>",parse_mode="HTML",reply_markup=group_success_keyboard(bot_url,web_url,group["token"]))
             return
 
     if not is_admin(uid) and not await check_membership(uid):
@@ -1153,22 +1091,14 @@ async def start_handler(message: Message):
             reply_markup=join_keyboard(),
         )
 
-    start_text_value = setting("start_text", "👋 خوش آمدی!")
-    if is_admin(uid):
-        await message.answer(start_text_value, parse_mode="HTML", reply_markup=main_keyboard(uid))
-    else:
-        # Normal users get no admin keyboard.
-        await message.answer(start_text_value, parse_mode="HTML", reply_markup=None)
+    await message.answer("👋 خوش آمدی!", reply_markup=main_keyboard())
 
 
 @dp.callback_query(F.data == "check_join")
 async def check_join(callback: CallbackQuery):
     if await check_membership(callback.from_user.id):
         await callback.answer("عضویت تأیید شد.", show_alert=False)
-        if is_admin(callback.from_user.id):
-            await callback.message.answer("✅ عضویت تأیید شد.", reply_markup=main_keyboard(callback.from_user.id))
-        else:
-            await callback.message.answer("✅ عضویت تأیید شد.")
+        await callback.message.answer("✅ عضویت تأیید شد.", reply_markup=main_keyboard())
     else:
         await callback.answer("هنوز عضو همه کانال‌ها نیستی.", show_alert=True)
         await callback.message.answer(
@@ -1200,10 +1130,17 @@ async def upload_single(message: Message):
 async def upload_group(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ فقط ادمین‌ها اجازه آپلود دارند.")
-    admin_actions.pop(message.from_user.id,None)
-    uid=message.from_user.id
-    upload_modes[uid]="group"; upload_items[uid]=[]
-    await message.answer("🟣 <b>آپلود گروهی فعال شد.</b>\n\nفایل‌ها را یکی‌یکی بفرست.\nبعد از اتمام روی «✅ پایان» بزن.\nبرای لغو «❌ انصراف» را بزن.",parse_mode="HTML",reply_markup=group_upload_keyboard())
+    admin_actions.pop(message.from_user.id, None)
+    uid = message.from_user.id
+    upload_modes[uid] = "group"
+    upload_items[uid] = []
+    await message.answer(
+        "🟣 <b>آپلود گروهی فعال شد.</b>\n\n"
+        "فایل‌ها را یکی‌یکی بفرست.\n"
+        "در پایان /done را بزن.\n\n"
+        "لغو: /cancel",
+        parse_mode="HTML",
+    )
 
 
 @dp.message(
@@ -1394,35 +1331,57 @@ async def dashboard_home_callback(callback: CallbackQuery):
 # DONE / CANCEL
 # =========================================================
 
-async def finalize_group(message: Message):
-    uid=message.from_user.id
-    if not is_admin(uid): return await message.answer("⛔ فقط ادمین‌ها می‌توانند آپلود گروهی انجام دهند.")
-    if upload_modes.get(uid)!="group": return await message.answer("ℹ️ آپلود گروهی فعالی نداری.",reply_markup=main_keyboard(uid))
-    items=upload_items.get(uid,[])
-    if not items: return await message.answer("❌ هنوز هیچ فایلی اضافه نکردی.",reply_markup=group_upload_keyboard())
-    try:
-        token=create_group(uid,"مجموعه فایل",items); username=await bot_username(); bot_url=tg_link(username,"group",token); web_url=f"{BASE_URL}/g/{token}"
-        count=len(items); total_size=sum(int(x.get("file_size") or 0) for x in items); clear_user_state(uid)
-        await message.answer("📦 <b>آپلود گروهی با موفقیت انجام شد!</b>\n\n"+f"📁 تعداد آیتم‌ها: <b>{count}</b>\n💾 حجم کل: <b>{fmt_size(total_size)}</b>\n🔐 شناسه: <code>{escape(token)}</code>\n🔗 <code>{escape(bot_url)}</code>\n\nیکی از گزینه‌ها را انتخاب کن:",parse_mode="HTML",disable_web_page_preview=True,reply_markup=group_success_keyboard(bot_url,web_url,token))
-        await message.answer("🏠",reply_markup=main_keyboard(uid))
-    except Exception as e:
-        print("GROUP CREATE ERROR:",repr(e)); await message.answer(f"❌ ساخت مجموعه انجام نشد.\n<code>{escape(str(e))}</code>",parse_mode="HTML")
-
-@dp.message(F.text == "✅ پایان")
-async def finish_group_button(message: Message):
-    await finalize_group(message)
-
-@dp.message(F.text == "❌ انصراف")
-async def cancel_upload_button(message: Message):
-    clear_user_state(message.from_user.id); await message.answer("❌ آپلود لغو شد.",reply_markup=main_keyboard(message.from_user.id))
-
 @dp.message(Command("done"))
 async def done_handler(message: Message):
-    await finalize_group(message)
+    uid = message.from_user.id
+    if not is_admin(uid):
+        return await message.answer("⛔ فقط ادمین‌ها می‌توانند آپلود گروهی انجام دهند.")
+    if upload_modes.get(uid) != "group":
+        return await message.answer(
+            "ℹ️ آپلود گروهی فعالی نداری.",
+            reply_markup=main_keyboard(),
+        )
+
+    items = upload_items.get(uid, [])
+    if not items:
+        return await message.answer("❌ هنوز هیچ فایلی اضافه نکردی.")
+
+    try:
+        token = create_group(uid, "مجموعه فایل", items)
+        username = await bot_username()
+        bot_url = tg_link(username, "group", token)
+        web_url = f"{BASE_URL}/g/{token}"
+        count = len(items)
+        clear_user_state(uid)
+
+        share_url = f"https://t.me/share/url?url={quote(bot_url, safe='')}"
+        total_size = sum(int(item.get("file_size") or 0) for item in items)
+        await message.answer(
+            "╭─────── 📦 ───────╮\n"
+            "│  <b>آپلود گروهی با موفقیت انجام شد!</b>  │\n"
+            "╰──────────────────╯\n\n"
+            "📦 <b>مجموعه فایل‌ها</b>\n"
+            f"📁 تعداد آیتم‌ها: <b>{count}</b>\n"
+            f"💾 حجم کل: <b>{fmt_size(total_size)}</b>\n"
+            f"🔐 شناسه: <code>{escape(token)}</code>\n"
+            f"🔗 لینک اشتراک‌گذاری:\n<code>{escape(bot_url)}</code>\n\n"
+            "یکی از گزینه‌های زیر را انتخاب کن:",
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+            reply_markup=group_success_keyboard(bot_url, web_url, token),
+        )
+    except Exception as e:
+        print("GROUP CREATE ERROR:", repr(e))
+        await message.answer(
+            f"❌ ساخت مجموعه انجام نشد.\n\n<code>{escape(str(e))}</code>",
+            parse_mode="HTML",
+        )
+
 
 @dp.message(Command("cancel"))
 async def cancel(message: Message):
-    clear_user_state(message.from_user.id); await message.answer("❌ عملیات لغو شد.",reply_markup=main_keyboard(message.from_user.id))
+    clear_user_state(message.from_user.id)
+    await message.answer("❌ عملیات لغو شد.", reply_markup=main_keyboard())
 
 
 # =========================================================
@@ -1464,40 +1423,6 @@ async def toggle_bot(message: Message):
         reply_markup=main_keyboard(),
     )
 
-
-@dp.message(F.text == "👀 مشاهده استارت از دید کاربر")
-async def start_preview(message: Message):
-    if not is_admin(message.from_user.id):
-        return await message.answer("⛔ دسترسی ندارید.")
-    text = setting("start_text", "👋 خوش آمدی!")
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✏️ ویرایش متن استارت", callback_data="edit_start_text")
-    ]])
-    await message.answer("👀 <b>نمایش استارت از دید کاربر:</b>", parse_mode="HTML")
-    await message.answer(text, parse_mode="HTML", reply_markup=kb)
-
-@dp.callback_query(F.data == "edit_start_text")
-async def edit_start_text_callback(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        return await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
-    admin_actions[callback.from_user.id] = "edit_start"
-    upload_modes.pop(callback.from_user.id, None)
-    upload_items.pop(callback.from_user.id, None)
-    await callback.answer()
-    await callback.message.answer("✏️ متن جدید استارت را ارسال کن. متن دقیقاً همان‌طور که ذخیره شود نمایش داده می‌شود.")
-
-@dp.message(F.text.startswith("🗑 حذف خودکار ۲۰ ثانیه‌ای:"))
-async def toggle_auto_delete(message: Message):
-    if not is_admin(message.from_user.id):
-        return await message.answer("⛔ دسترسی ندارید.")
-    new_value = "0" if setting("auto_delete_20", "0") == "1" else "1"
-    set_setting("auto_delete_20", new_value)
-    status = "روشن 🟢" if new_value == "1" else "خاموش 🔴"
-    await message.answer(
-        f"🗑 حذف خودکار ۲۰ ثانیه‌ای {status} شد.\n\n"
-        "وقتی کاربر فایل یا مجموعه را دریافت کند، ربات هشدار می‌دهد که آن را در Saved Messages ذخیره کند و ۲۰ ثانیه بعد پیام فایل‌ها را حذف می‌کند.",
-        reply_markup=settings_keyboard(message.from_user.id),
-    )
 
 @dp.message(F.text == "⚙️ تنظیمات")
 async def settings_handler(message: Message):
@@ -1690,7 +1615,7 @@ async def users_list(message: Message):
     )
 
 
-@dp.message(F.text == "📋 لیست مسدودها")
+@dp.message(F.text == "🚫 لیست مسدودها")
 async def blocked_list(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ دسترسی ندارید.")
@@ -1777,48 +1702,6 @@ async def global_stats(message: Message):
 
 
 # =========================================================
-# ADMIN / BLOCK MANAGEMENT
-# =========================================================
-
-def admin_manage_keyboard():
-    return ReplyKeyboardMarkup(keyboard=[
-        [styled_button("➕ افزودن ادمین","success"), styled_button("➖ حذف ادمین","danger")],
-        [styled_button("👑 لیست ادمین‌ها","primary")],
-        [styled_button("🔙 بازگشت به تنظیمات","primary")],
-    ], resize_keyboard=True)
-
-def block_manage_keyboard():
-    return ReplyKeyboardMarkup(keyboard=[
-        [styled_button("➕ مسدود کردن کاربر","danger"), styled_button("➖ رفع مسدودی","success")],
-        [styled_button("📋 لیست مسدودها","primary")],
-        [styled_button("🔙 بازگشت به تنظیمات","primary")],
-    ], resize_keyboard=True)
-
-@dp.message(F.text == "👑 مدیریت ادمین‌ها")
-async def admin_manage(message: Message):
-    if not is_root(message.from_user.id): return await message.answer("⛔ فقط Root Admin اجازه دارد.")
-    await message.answer("👑 <b>مدیریت ادمین‌ها</b>",parse_mode="HTML",reply_markup=admin_manage_keyboard())
-
-@dp.message(F.text == "🚫 مدیریت مسدودی")
-async def block_manage(message: Message):
-    if not is_admin(message.from_user.id): return await message.answer("⛔ دسترسی ندارید.")
-    await message.answer("🚫 <b>مدیریت مسدودی</b>",parse_mode="HTML",reply_markup=block_manage_keyboard())
-
-@dp.message(F.text == "➕ مسدود کردن کاربر")
-async def block_start(message: Message):
-    if not is_admin(message.from_user.id): return await message.answer("⛔ دسترسی ندارید.")
-    admin_actions[message.from_user.id]="block_user"
-    upload_modes.pop(message.from_user.id,None); upload_items.pop(message.from_user.id,None)
-    await message.answer("🚫 آیدی عددی کاربر را بفرست.\nلغو: /cancel")
-
-@dp.message(F.text == "➖ رفع مسدودی")
-async def unblock_start(message: Message):
-    if not is_admin(message.from_user.id): return await message.answer("⛔ دسترسی ندارید.")
-    admin_actions[message.from_user.id]="unblock_user"
-    upload_modes.pop(message.from_user.id,None); upload_items.pop(message.from_user.id,None)
-    await message.answer("➖ آیدی عددی کاربر را بفرست.\nلغو: /cancel")
-
-# =========================================================
 # ADMIN ACTIONS
 # =========================================================
 
@@ -1859,6 +1742,46 @@ async def broadcast_start(message: Message):
 # =========================================================
 # LANGUAGE
 # =========================================================
+
+@dp.message(F.text == "🌐 تغییر زبان")
+async def language(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🇮🇷 فارسی"), KeyboardButton(text="🇬🇧 English")],
+            [KeyboardButton(text="🔙 بازگشت به تنظیمات")],
+            [KeyboardButton(text="🏠 منوی اصلی")],
+        ],
+        resize_keyboard=True,
+    )
+    await message.answer("🌐 زبان را انتخاب کن:", reply_markup=kb)
+
+
+async def set_language(uid, lang):
+    c = db()
+    c.execute("""
+        INSERT INTO user_settings(user_id, language, updated_at)
+        VALUES(?,?,CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id) DO UPDATE SET
+            language=excluded.language,
+            updated_at=CURRENT_TIMESTAMP
+    """, (uid, lang))
+    c.commit()
+    c.close()
+
+
+@dp.message(F.text == "🇮🇷 فارسی")
+async def fa(message: Message):
+    await set_language(message.from_user.id, "fa")
+    await message.answer("✅ فارسی فعال شد.", reply_markup=settings_keyboard())
+
+
+@dp.message(F.text == "🇬🇧 English")
+async def en(message: Message):
+    await set_language(message.from_user.id, "en")
+    await message.answer("✅ English enabled.", reply_markup=settings_keyboard())
+
 
 # =========================================================
 # MY STATS / ACCOUNT
@@ -1993,9 +1916,10 @@ MENU_TEXTS = {
     "📣 ارسال پیام همگانی", "🔴 خاموش کردن ربات", "🟢 روشن کردن ربات",
     "⚙️ تنظیمات", "👤 حساب من", "👥 لیست کاربران", "🚫 لیست مسدودها",
     "👑 لیست ادمین‌ها", "➕ افزودن ادمین", "➖ حذف ادمین", "🔐 عضویت اجباری",
-    "📊 آمار کلی", "📁 تنظیمات فایل‌ها", "📣 پیام همگانی",
+    "📊 آمار کلی", "📁 تنظیمات فایل‌ها", "🌐 تغییر زبان", "📣 پیام همگانی",
     "📦 کانال ذخیره‌سازی", "🌐 تنظیمات لینک وب", "🏠 بازگشت به منوی اصلی",
-    "🏠 منوی اصلی", "🔙 منوی اصلی", "🔙 بازگشت به تنظیمات", "➕ افزودن کانال", "🗑 حذف کانال", "📋 لیست کانال‌ها",
+    "🏠 منوی اصلی", "🔙 منوی اصلی", "🔙 بازگشت به تنظیمات", "🇮🇷 فارسی",
+    "🇬🇧 English", "➕ افزودن کانال", "🗑 حذف کانال", "📋 لیست کانال‌ها",
     "🧪 تست کانال‌ها",
 }
 
@@ -2017,29 +1941,9 @@ async def text_router(message: Message):
     if message.text.startswith("/"):
         return
 
-    # Localized menu aliases are normalized here so all languages use the same actions.
-    aliases=localized_label_map()
-    canonical=aliases.get(message.text)
-    if canonical:
-        if canonical=="upload": return await upload_single(message)
-        if canonical=="group": return await upload_group(message)
-        if canonical=="files": return await my_files(message)
-        if canonical=="broadcast": return await broadcast_start(message)
-        if canonical=="settings": return await settings_handler(message)
-        if canonical=="admins": return await admin_manage(message)
-        if canonical=="blocks": return await block_manage(message)
-        if canonical=="start_view": return await start_preview(message)
-        if canonical=="users": return await users_list(message)
-        if canonical=="blocked_list": return await blocked_list(message)
-        if canonical=="admin_list": return await admin_list(message)
-        if canonical=="add_admin": return await add_admin_start(message)
-        if canonical=="remove_admin": return await remove_admin_start(message)
-        if canonical=="force": return await join_manage(message)
-        if canonical=="stats": return await global_stats(message)
-        if canonical=="file_settings": return await file_settings(message)
-        if canonical=="back": return await back_main(message)
-        if canonical=="toggle_on" or canonical=="toggle_off": return await toggle_bot(message)
-
+    # Menu messages have dedicated handlers.
+    if message.text in MENU_TEXTS:
+        return
 
     action = admin_actions.get(uid)
 
@@ -2062,25 +1966,6 @@ async def text_router(message: Message):
 async def handle_admin_action_input(message: Message, action: str):
     uid = message.from_user.id
     raw = (message.text or "").strip()
-
-    if action.startswith("rename_file:"):
-        token=action.split(":",1)[1]
-        if not raw: return await message.answer("❌ نام خالی است.")
-        if len(raw)>200: return await message.answer("❌ نام خیلی طولانی است.")
-        ok=rename_file(uid,token,raw)
-        admin_actions.pop(uid,None)
-        row=get_file(token)
-        if ok and row:
-            username=await bot_username(); bot_url=tg_link(username,"file",token); web_url=f"{BASE_URL}/f/{token}"
-            return await message.answer("✅ نام فایل تغییر کرد.",reply_markup=upload_success_keyboard(bot_url,web_url,token))
-        return await message.answer("❌ فایل پیدا نشد.",reply_markup=main_keyboard(uid))
-
-    if action == "edit_start":
-        if not raw:
-            return await message.answer("❌ متن نمی‌تواند خالی باشد.")
-        set_setting("start_text", raw)
-        admin_actions.pop(uid,None)
-        return await message.answer("✅ متن استارت ذخیره شد.",reply_markup=settings_keyboard(uid))
 
     if action == "storage":
         if raw.lower() == "off":
@@ -2160,20 +2045,6 @@ async def handle_admin_action_input(message: Message, action: str):
             ("✅ " if ok else "❌ ") + text,
             reply_markup=join_manage_keyboard(),
         )
-
-    if action in ("block_user", "unblock_user"):
-        if not is_admin(uid):
-            admin_actions.pop(uid,None)
-            return await message.answer("⛔ دسترسی ندارید.")
-        if not raw.isdigit():
-            return await message.answer("❌ فقط آیدی عددی بفرست.")
-        target=int(raw)
-        if action=="block_user":
-            ok,text=block_user(target,uid)
-        else:
-            ok,text=unblock_user(target)
-        admin_actions.pop(uid,None)
-        return await message.answer(("✅ " if ok else "❌ ")+text,reply_markup=block_manage_keyboard())
 
     if action in ("add_admin", "remove_admin"):
         if not is_root(uid):
