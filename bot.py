@@ -24,14 +24,37 @@ from aiogram.client.session.aiohttp import AiohttpSession
 # =========================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env", override=True)
+
+# Railway: متغیرهای خود Railway باید بر فایل .env محلی اولویت داشته باشند.
+# اگر برنامه روی Railway باشد، .env داخل ریپو اصلاً خوانده نمی‌شود تا
+# BOT_TOKEN / PROXY_URL محلی ناخواسته وارد محیط Production نشوند.
+IS_RAILWAY = bool(
+    os.getenv("RAILWAY_ENVIRONMENT")
+    or os.getenv("RAILWAY_PROJECT_ID")
+    or os.getenv("RAILWAY_SERVICE_ID")
+)
+
+if not IS_RAILWAY:
+    load_dotenv(BASE_DIR / ".env", override=False)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 PROXY_URL = os.getenv("PROXY_URL", "").strip()
+
+# روی Railway معمولاً پروکسی لازم نیست. فقط اگر صراحتاً در Variables
+# مقدار PROXY_URL تعریف شده باشد از آن استفاده می‌کنیم.
+if IS_RAILWAY and PROXY_URL in {
+    "socks5://127.0.0.1:10808",
+    "socks5h://127.0.0.1:10808",
+    "http://127.0.0.1:10808",
+}:
+    PROXY_URL = ""
+
 BASE_URL = os.getenv("BASE_URL", "").strip().rstrip("/")
 if not BASE_URL:
     railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip().rstrip("/")
     BASE_URL = f"https://{railway_domain}" if railway_domain else "http://127.0.0.1:8080"
+
+# Railway پورت را از PORT در اختیار برنامه قرار می‌دهد.
 WEB_PORT = int(os.getenv("PORT", os.getenv("WEB_PORT", "8080")))
 JOIN_CHANNEL = os.getenv("JOIN_CHANNEL", "@eldnv").strip()
 
@@ -39,10 +62,25 @@ NEW_OWNER_ID = 8718566270
 # مالک اصلی جدید ربات. عمداً مستقل از .env نگه داشته شده تا فقط همین حساب مالک باشد.
 ROOT_ADMIN_IDS = {NEW_OWNER_ID}
 
-DB_PATH = BASE_DIR / "uploader.db"
+# اگر Volume رایلوِی روی /data متصل باشد، دیتابیس آنجا ذخیره می‌شود و با
+# Restart / Redeploy از بین نمی‌رود. در اجرای محلی، همان کنار bot.py می‌ماند.
+RAILWAY_DATA_DIR = Path(os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "/data"))
+if IS_RAILWAY and RAILWAY_DATA_DIR.exists() and RAILWAY_DATA_DIR.is_dir():
+    DB_PATH = RAILWAY_DATA_DIR / "uploader.db"
+else:
+    DB_PATH = BASE_DIR / "uploader.db"
 
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN در فایل .env پیدا نشد.")
+    raise RuntimeError(
+        "BOT_TOKEN تنظیم نشده است. در Railway از مسیر Service → Variables "
+        "یک متغیر BOT_TOKEN با توکن ربات بساز."
+    )
+
+print(f"🚂 Railway mode: {IS_RAILWAY}")
+print(f"💾 DB_PATH: {DB_PATH}")
+print(f"🌐 WEB_PORT: {WEB_PORT}")
+print(f"🌐 BASE_URL: {BASE_URL}")
+print(f"🔌 Proxy: {'enabled' if PROXY_URL else 'disabled'}")
 
 session = AiohttpSession(
     proxy=PROXY_URL or None,
