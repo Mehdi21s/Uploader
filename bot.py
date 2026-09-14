@@ -11,7 +11,7 @@ from aiohttp import web, ClientSession, ClientTimeout
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.exceptions import SkipHandler
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.types import (
     Message, CallbackQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
