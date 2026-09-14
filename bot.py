@@ -11,6 +11,7 @@ from aiohttp import web, ClientSession, ClientTimeout
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
+from aiogram.exceptions import SkipHandler
 from aiogram.types import (
     Message, CallbackQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
@@ -203,6 +204,10 @@ def init_db():
     c.execute("""
         INSERT OR IGNORE INTO bot_settings(key, value)
         VALUES('bot_enabled', '1')
+    """)
+    c.execute("""
+        INSERT OR IGNORE INTO bot_settings(key, value)
+        VALUES('auto_delete_20', '0')
     """)
 
     c.execute("""
@@ -658,6 +663,19 @@ def clear_user_state(uid):
     upload_items.pop(uid, None)
 
 
+async def _delete_after_20(msg):
+    try:
+        await asyncio.sleep(20)
+        await msg.delete()
+    except Exception as e:
+        print("AUTO DELETE ERROR:", repr(e))
+
+
+def schedule_auto_delete(msg):
+    if setting("auto_delete_20", "0") == "1":
+        asyncio.create_task(_delete_after_20(msg))
+
+
 # =========================================================
 # KEYBOARDS / UI STYLE
 # =========================================================
@@ -763,18 +781,52 @@ def group_success_keyboard(bot_url, web_url, token):
 
 
 def settings_keyboard():
+    auto_status = "روشن 🟢" if setting("auto_delete_20", "0") == "1" else "خاموش 🔴"
     return ReplyKeyboardMarkup(
         keyboard=[
-            [styled_button("👥 لیست کاربران", "primary"), styled_button("🚫 لیست مسدودها", "danger")],
-            [styled_button("👑 لیست ادمین‌ها", "primary"), styled_button("➕ افزودن ادمین", "success")],
-            [styled_button("➖ حذف ادمین", "danger"), styled_button("🔐 عضویت اجباری", "primary")],
+            [styled_button("👥 لیست کاربران", "primary"), styled_button("👑 مدیریت ادمین‌ها", "primary")],
+            [styled_button("🚫 مدیریت مسدودی", "danger"), styled_button("🔐 عضویت اجباری", "primary")],
             [styled_button("📊 آمار کلی", "primary"), styled_button("📁 تنظیمات فایل‌ها", "primary")],
-            [styled_button("🌐 تغییر زبان", "primary"), styled_button("📣 پیام همگانی", "success")],
+            [styled_button(f"🗑 حذف خودکار ۲۰ ثانیه‌ای: {auto_status}", "success" if auto_status.startswith("روشن") else "danger"), styled_button("🌐 تغییر زبان", "primary")],
+            [styled_button("📣 پیام همگانی", "success")],
             [styled_button("👋 پیام خوش‌آمدگویی", "primary")],
             [styled_button("🏠 بازگشت به منوی اصلی", "primary")],
         ],
         resize_keyboard=True,
         is_persistent=True,
+    )
+
+
+def admin_manage_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [styled_button("👑 لیست ادمین‌ها", "primary")],
+            [styled_button("➕ افزودن ادمین", "success"), styled_button("➖ حذف ادمین", "danger")],
+            [styled_button("🔙 بازگشت به تنظیمات", "primary")],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def blocked_manage_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [styled_button("🚫 لیست مسدودها", "danger")],
+            [styled_button("🚫 مسدود کردن کاربر", "danger"), styled_button("✅ رفع مسدودی", "success")],
+            [styled_button("🔙 بازگشت به تنظیمات", "primary")],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def welcome_settings_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [styled_button("✏️ تغییر پیام خوش‌آمدگویی", "success")],
+            [styled_button("👀 پیش‌نمایش پیام", "primary")],
+            [styled_button("🔙 بازگشت به تنظیمات", "primary")],
+        ],
+        resize_keyboard=True,
     )
 
 
@@ -969,7 +1021,7 @@ async def process_upload(message: Message):
         upload_items.setdefault(uid, []).append(item)
         await maybe_storage_copy(message)
         count = len(upload_items[uid])
-        return await message.answer(
+        sent = await message.answer(
             f"✅ آیتم <b>{count}</b> اضافه شد.\n\n"
             f"📁 {escape(item['file_name'] or 'file')}\n"
             f"💾 {fmt_size(item['file_size'])}\n\n"
@@ -977,6 +1029,8 @@ async def process_upload(message: Message):
             "وقتی تمام شد /done را بزن.",
             parse_mode="HTML",
         )
+        schedule_auto_delete(sent)
+        return sent
 
     if mode == "single":
         try:
@@ -988,7 +1042,7 @@ async def process_upload(message: Message):
             clear_user_state(uid)
             share_url = f"https://t.me/share/url?url={quote(bot_url, safe='')}"
 
-            return await message.answer(
+            sent = await message.answer(
                 "╭─────── ✨ ───────╮\n"
                 "│  <b>آپلود با موفقیت انجام شد!</b>  │\n"
                 "╰──────────────────╯\n\n"
@@ -1001,6 +1055,8 @@ async def process_upload(message: Message):
                 disable_web_page_preview=True,
                 reply_markup=upload_success_keyboard(bot_url, web_url, token),
             )
+            schedule_auto_delete(sent)
+            return sent
         except Exception as e:
             print("UPLOAD ERROR:", repr(e))
             return await message.answer(
@@ -1134,12 +1190,6 @@ async def start_handler(message: Message):
             if not group:
                 return await message.answer("❌ مجموعه پیدا نشد.")
 
-            await message.answer(
-                f"📦 <b>{escape(group['title'] or 'مجموعه فایل')}</b>\n"
-                f"📁 تعداد: {len(items)}",
-                parse_mode="HTML",
-            )
-
             sent = 0
             for item in items:
                 try:
@@ -1218,6 +1268,19 @@ async def upload_group(message: Message):
 async def media_upload_handler(message: Message):
     uid = message.from_user.id
     register_user(uid, message.from_user.username, message.from_user.first_name)
+
+    if admin_actions.get(uid) == "broadcast":
+        async with broadcast_lock:
+            admin_actions.pop(uid, None)
+            status = await message.answer("📣 ارسال همگانی شروع شد...")
+            sent, failed = await broadcast_message(message)
+            await status.edit_text(
+                f"📣 <b>ارسال همگانی تمام شد.</b>\n\n"
+                f"✅ موفق: {sent}\n"
+                f"❌ ناموفق: {failed}",
+                parse_mode="HTML",
+            )
+        return
 
     if is_blocked(uid):
         return await message.answer("🚫 دسترسی شما مسدود است.")
@@ -1423,7 +1486,7 @@ async def done_handler(message: Message):
         clear_user_state(uid)
 
         share_url = f"https://t.me/share/url?url={quote(bot_url, safe='')}"
-        await message.answer(
+        sent = await message.answer(
             "╭─────── 📦 ───────╮\n"
             "│  <b>آپلود گروهی با موفقیت انجام شد!</b>  │\n"
             "╰──────────────────╯\n\n"
@@ -1434,6 +1497,7 @@ async def done_handler(message: Message):
             disable_web_page_preview=True,
             reply_markup=group_success_keyboard(bot_url, web_url, token),
         )
+        schedule_auto_delete(sent)
     except Exception as e:
         print("GROUP CREATE ERROR:", repr(e))
         await message.answer(
@@ -1517,6 +1581,21 @@ async def back_main(message: Message):
 async def back_settings(message: Message):
     clear_user_state(message.from_user.id)
     await send_settings(message)
+
+
+@dp.message(F.text.startswith("🗑 حذف خودکار ۲۰ ثانیه‌ای:"))
+async def toggle_auto_delete(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    new = "0" if setting("auto_delete_20", "0") == "1" else "1"
+    set_setting("auto_delete_20", new)
+    status = "فعال 🟢" if new == "1" else "غیرفعال 🔴"
+    await message.answer(
+        f"🗑 <b>حذف خودکار ۲۰ ثانیه‌ای {status} شد.</b>\n\n"
+        "پیام‌های نتیجه آپلود در صورت فعال بودن، بعد از ۲۰ ثانیه حذف می‌شوند.",
+        parse_mode="HTML",
+        reply_markup=settings_keyboard(),
+    )
 
 
 # =========================================================
@@ -1656,6 +1735,20 @@ async def test_channels(message: Message):
     )
 
 
+@dp.message(F.text == "👑 مدیریت ادمین‌ها")
+async def admin_manage(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    await message.answer("👑 <b>مدیریت ادمین‌ها</b>\n\nیک گزینه را انتخاب کن:", parse_mode="HTML", reply_markup=admin_manage_keyboard())
+
+
+@dp.message(F.text == "🚫 مدیریت مسدودی")
+async def blocked_manage(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    await message.answer("🚫 <b>مدیریت مسدودی</b>\n\nیک گزینه را انتخاب کن:", parse_mode="HTML", reply_markup=blocked_manage_keyboard())
+
+
 # =========================================================
 # ADMIN LISTS / STATS
 # =========================================================
@@ -1779,6 +1872,26 @@ async def global_stats(message: Message):
 # ADMIN ACTIONS
 # =========================================================
 
+@dp.message(F.text == "🚫 مسدود کردن کاربر")
+async def block_user_start(message: Message):
+    if not is_root(message.from_user.id):
+        return await message.answer("⛔ فقط Root Admin اجازه دارد.")
+    admin_actions[message.from_user.id] = "block_user"
+    upload_modes.pop(message.from_user.id, None)
+    upload_items.pop(message.from_user.id, None)
+    await message.answer("🚫 آیدی عددی کاربر را بفرست.\nلغو: /cancel")
+
+
+@dp.message(F.text == "✅ رفع مسدودی")
+async def unblock_user_start(message: Message):
+    if not is_root(message.from_user.id):
+        return await message.answer("⛔ فقط Root Admin اجازه دارد.")
+    admin_actions[message.from_user.id] = "unblock_user"
+    upload_modes.pop(message.from_user.id, None)
+    upload_items.pop(message.from_user.id, None)
+    await message.answer("✅ آیدی عددی کاربر را بفرست.\nلغو: /cancel")
+
+
 @dp.message(F.text == "➕ افزودن ادمین")
 async def add_admin_start(message: Message):
     if not is_root(message.from_user.id):
@@ -1818,21 +1931,41 @@ async def welcome_settings(message: Message):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ دسترسی ندارید.")
     current = setting("welcome_message", "👋 خوش آمدی!") or "👋 خوش آمدی!"
+    await message.answer(
+        "👋 <b>تنظیم پیام خوش‌آمدگویی</b>\n\n"
+        "این پیام هنگام /start به کاربر نمایش داده می‌شود.\n\n"
+        f"📝 <b>پیام فعلی:</b>\n<blockquote>{escape(current)}</blockquote>\n\n"
+        "یک گزینه را انتخاب کن:",
+        parse_mode="HTML",
+        reply_markup=welcome_settings_keyboard(),
+    )
+
+
+@dp.message(F.text == "✏️ تغییر پیام خوش‌آمدگویی")
+async def welcome_change_start(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
     admin_actions[message.from_user.id] = "welcome_message"
     upload_modes.pop(message.from_user.id, None)
     upload_items.pop(message.from_user.id, None)
     await message.answer(
-        "👋 <b>پیام خوش‌آمدگویی</b>\n\n"
-        "متن پیام /start را در پیام بعدی بفرست. همین متن برای کاربران نمایش داده می‌شود.\n\n"
-        f"پیام فعلی:\n<blockquote>{escape(current)}</blockquote>\n\n"
+        "✏️ <b>تغییر پیام خوش‌آمدگویی</b>\n\n"
+        "متن جدید را در پیام بعدی بفرست.\n"
         "لغو: /cancel",
         parse_mode="HTML",
+        reply_markup=welcome_settings_keyboard(),
     )
 
 
-@dp.message(F.text == "📣 پیام همگانی")
-async def broadcast_settings_start(message: Message):
-    await broadcast_start(message)
+@dp.message(F.text == "👀 پیش‌نمایش پیام")
+async def welcome_preview(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    current = setting("welcome_message", "👋 خوش آمدی!") or "👋 خوش آمدی!"
+    await message.answer(
+        "👀 <b>پیش‌نمایش برای کاربر</b>\n\n" + current,
+        reply_markup=welcome_settings_keyboard(),
+    )
 
 
 # =========================================================
@@ -2017,6 +2150,9 @@ MENU_TEXTS = {
     "🏠 منوی اصلی", "🔙 منوی اصلی", "🔙 بازگشت به تنظیمات", "🇮🇷 فارسی",
     "🇬🇧 English", "➕ افزودن کانال", "🗑 حذف کانال", "📋 لیست کانال‌ها",
     "🧪 تست کانال‌ها", "👋 پیام خوش‌آمدگویی",
+    "🗑 حذف خودکار ۲۰ ثانیه‌ای: خاموش 🔴", "🗑 حذف خودکار ۲۰ ثانیه‌ای: روشن 🟢",
+    "👑 مدیریت ادمین‌ها", "🚫 مدیریت مسدودی", "🚫 مسدود کردن کاربر", "✅ رفع مسدودی",
+    "✏️ تغییر پیام خوش‌آمدگویی", "👀 پیش‌نمایش پیام",
 }
 
 
@@ -2035,7 +2171,7 @@ async def text_router(message: Message):
         )
 
     if message.text.startswith("/"):
-        return
+        raise SkipHandler
 
     # These buttons have handlers declared later in the file; route them here
     # before MENU_TEXTS can swallow the button press.
@@ -2046,7 +2182,7 @@ async def text_router(message: Message):
 
     # Menu messages have dedicated handlers.
     if message.text in MENU_TEXTS:
-        return
+        raise SkipHandler
 
     action = admin_actions.get(uid)
 
@@ -2161,6 +2297,17 @@ async def handle_admin_action_input(message: Message, action: str):
             reply_markup=join_manage_keyboard(),
         )
 
+    if action in ("block_user", "unblock_user"):
+        if not is_root(uid):
+            admin_actions.pop(uid, None)
+            return await message.answer("⛔ فقط Root Admin اجازه دارد.")
+        if not raw.isdigit():
+            return await message.answer("❌ فقط آیدی عددی بفرست.")
+        target = int(raw)
+        ok, text = block_user(target, uid) if action == "block_user" else unblock_user(target)
+        admin_actions.pop(uid, None)
+        return await message.answer(("✅ " if ok else "❌ ") + text, reply_markup=blocked_manage_keyboard())
+
     if action in ("add_admin", "remove_admin"):
         if not is_root(uid):
             admin_actions.pop(uid, None)
@@ -2177,7 +2324,7 @@ async def handle_admin_action_input(message: Message, action: str):
         admin_actions.pop(uid, None)
         return await message.answer(
             ("✅ " if ok else "❌ ") + text,
-            reply_markup=settings_keyboard(),
+            reply_markup=admin_manage_keyboard(),
         )
 
     if action == "broadcast":
