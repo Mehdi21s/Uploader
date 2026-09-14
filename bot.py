@@ -24,36 +24,25 @@ from aiogram.client.session.aiohttp import AiohttpSession
 # =========================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-# Local .env is useful for development. Railway service variables always win.
-load_dotenv(BASE_DIR / ".env", override=False)
+load_dotenv(BASE_DIR / ".env", override=True)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 PROXY_URL = os.getenv("PROXY_URL", "").strip()
-_configured_base_url = os.getenv("BASE_URL", "").strip().rstrip("/")
-_railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip().strip("/")
-if _railway_domain and (not _configured_base_url or "127.0.0.1" in _configured_base_url or "localhost" in _configured_base_url):
-    BASE_URL = f"https://{_railway_domain}"
-elif _configured_base_url:
-    BASE_URL = _configured_base_url
-else:
-    BASE_URL = "http://127.0.0.1:8080"
-WEB_PORT = int(os.getenv("WEB_PORT", "8080"))
+BASE_URL = os.getenv("BASE_URL", "").strip().rstrip("/")
+if not BASE_URL:
+    railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip().rstrip("/")
+    BASE_URL = f"https://{railway_domain}" if railway_domain else "http://127.0.0.1:8080"
+WEB_PORT = int(os.getenv("PORT", os.getenv("WEB_PORT", "8080")))
 JOIN_CHANNEL = os.getenv("JOIN_CHANNEL", "@eldnv").strip()
 
 NEW_OWNER_ID = 8718566270
 # مالک اصلی جدید ربات. عمداً مستقل از .env نگه داشته شده تا فقط همین حساب مالک باشد.
 ROOT_ADMIN_IDS = {NEW_OWNER_ID}
 
-# IMPORTANT: On Railway set DB_PATH=/data/uploader.db and attach a Railway
-# Volume mounted at /data. If DB_PATH is not set, local development keeps
-# using ./uploader.db. The existing database is NEVER overwritten when the
-# persistent path already exists.
-DB_PATH = Path(
-    os.getenv("DB_PATH", str(BASE_DIR / "uploader.db")).strip()
-).expanduser()
+DB_PATH = BASE_DIR / "uploader.db"
 
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN در Railway Variables یا فایل .env پیدا نشد.")
+    raise RuntimeError("BOT_TOKEN در فایل .env پیدا نشد.")
 
 session = AiohttpSession(
     proxy=PROXY_URL or None,
@@ -73,50 +62,11 @@ broadcast_lock = asyncio.Lock()
 # DATABASE
 # =========================================================
 
-def prepare_database_path():
-    """Prepare the configured DB path without overwriting persistent data.
-
-    Local mode:
-        ./uploader.db
-
-    Railway mode:
-        DB_PATH=/data/uploader.db with a Volume mounted at /data.
-
-    If the persistent DB already exists, it is used as-is. If the persistent
-    DB is missing but the repository contains uploader.db, the repository DB
-    is copied once using SQLite backup. This is only a bootstrap operation;
-    it never replaces an existing persistent database.
-    """
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-    seed_path = BASE_DIR / "uploader.db"
-    if DB_PATH.resolve() == seed_path.resolve():
-        return
-
-    if DB_PATH.exists():
-        return
-
-    if not seed_path.exists():
-        return
-
-    print(f"💾 Persistent DB not found; bootstrapping once from {seed_path}")
-    src = sqlite3.connect(seed_path)
-    dst = sqlite3.connect(DB_PATH)
-    try:
-        src.backup(dst)
-        dst.commit()
-    finally:
-        dst.close()
-        src.close()
-    print(f"✅ Database initialized at: {DB_PATH}")
-
-
 def db():
     c = sqlite3.connect(DB_PATH, timeout=30)
     c.row_factory = sqlite3.Row
     c.execute("PRAGMA foreign_keys=ON")
     c.execute("PRAGMA journal_mode=WAL")
-    c.execute("PRAGMA synchronous=FULL")
     c.execute("PRAGMA busy_timeout=30000")
     return c
 
@@ -332,11 +282,11 @@ def bot_status_text():
 
 
 def is_root(uid):
-    return int(uid) == NEW_OWNER_ID
+    return uid in ROOT_ADMIN_IDS
 
 
 def is_admin(uid):
-    if int(uid) == NEW_OWNER_ID or uid in ROOT_ADMIN_IDS:
+    if uid in ROOT_ADMIN_IDS:
         return True
     c = db()
     r = c.execute(
@@ -694,19 +644,6 @@ def styled_inline_button(text, *, style=None, callback_data=None, url=None):
         return InlineKeyboardButton(**kwargs)
 
 
-def group_upload_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                styled_button("✅ پایان", "success"),
-                styled_button("❌ لغو", "danger"),
-            ]
-        ],
-        resize_keyboard=True,
-        is_persistent=False,
-    )
-
-
 def main_keyboard():
     toggle_text = "🔴 خاموش کردن ربات" if bot_is_enabled() else "🟢 روشن کردن ربات"
     toggle_style = "danger" if bot_is_enabled() else "success"
@@ -725,6 +662,17 @@ def main_keyboard():
                 styled_button("⚙️ تنظیمات", "primary"),
             ],
         ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def group_upload_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[[
+            styled_button("✅ پایان", "success"),
+            styled_button("❌ لغو", "danger"),
+        ]],
         resize_keyboard=True,
         is_persistent=True,
     )
@@ -1012,40 +960,8 @@ async def process_upload(message: Message):
 
 @dp.callback_query(F.data == "ui_files")
 async def upload_ui_files(callback: CallbackQuery):
-    # callback.message.from_user is the BOT, not the person who pressed the button.
-    # Calling my_files(callback.message) therefore made the bot look like a non-admin.
-    uid = callback.from_user.id
-    if not is_admin(uid):
-        return await callback.answer("⛔ فقط ادمین‌ها اجازه مشاهده فایل‌ها و آمار را دارند.", show_alert=True)
-
     await callback.answer()
-    c = db()
-    user_row = c.execute("SELECT * FROM users WHERE user_id=?", (uid,)).fetchone()
-    users_total = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    blocked_users = c.execute("SELECT COUNT(*) FROM blocked_users").fetchone()[0]
-    active_users = max(users_total - blocked_users, 0)
-    files_total = c.execute("SELECT COUNT(*) FROM files WHERE active=1").fetchone()[0]
-    groups_total = c.execute("SELECT COUNT(*) FROM groups WHERE active=1").fetchone()[0]
-    downloads = c.execute("SELECT COALESCE(SUM(downloads),0) FROM files WHERE active=1").fetchone()[0]
-    total_size = c.execute("SELECT COALESCE(SUM(file_size),0) FROM files WHERE active=1").fetchone()[0]
-    recent_files = c.execute("""
-        SELECT * FROM files
-        WHERE owner_id=? AND active=1
-        ORDER BY id DESC LIMIT 10
-    """, (uid,)).fetchall()
-    c.close()
-
-    bot_info = await bot.get_me()
-    text = build_stats_dashboard(
-        bot_info, uid, user_row, users_total, active_users, blocked_users,
-        files_total, groups_total, downloads, total_size, recent_files
-    )
-    await callback.message.answer(
-        text,
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-        reply_markup=stats_dashboard_keyboard(recent_files, bot_info.username),
-    )
+    await my_files(callback.message, callback.from_user.id)
 
 
 @dp.callback_query(F.data == "ui_upload")
@@ -1085,8 +1001,8 @@ async def group_add_file_callback(callback: CallbackQuery):
     await callback.answer("➕ حالت افزودن فایل فعال شد.")
     await callback.message.answer(
         "📦 <b>افزودن فایل به مجموعه</b>\n\n"
-        "فایل‌های جدید را بفرست و در پایان «✅ پایان» را بزن.\n"
-        "برای لغو «❌ لغو» را بزن.",
+        "فایل‌های جدید را بفرست و در پایان /done را بزن.\n"
+        "لغو: /cancel",
         parse_mode="HTML",
         reply_markup=group_upload_keyboard(),
     )
@@ -1165,6 +1081,12 @@ async def start_handler(message: Message):
             if not group:
                 return await message.answer("❌ مجموعه پیدا نشد.")
 
+            await message.answer(
+                f"📦 <b>{escape(group['title'] or 'مجموعه فایل')}</b>\n"
+                f"📁 تعداد: {len(items)}",
+                parse_mode="HTML",
+            )
+
             sent = 0
             for item in items:
                 try:
@@ -1229,8 +1151,8 @@ async def upload_group(message: Message):
     await message.answer(
         "🟣 <b>آپلود گروهی فعال شد.</b>\n\n"
         "فایل‌ها را یکی‌یکی بفرست.\n"
-        "در پایان «✅ پایان» را بزن.\n"
-        "برای لغو «❌ لغو» را بزن.",
+        "در پایان /done را بزن.\n\n"
+        "لغو: /cancel",
         parse_mode="HTML",
         reply_markup=group_upload_keyboard(),
     )
@@ -1342,8 +1264,8 @@ def build_stats_dashboard(bot_info, user_id, user_row, users_total, active_users
 
 
 @dp.message(F.text == "📊 مشاهده فایل‌ها و آمار")
-async def my_files(message: Message):
-    uid = message.from_user.id
+async def my_files(message: Message, uid_override=None):
+    uid = uid_override if uid_override is not None else message.from_user.id
     if not is_admin(uid):
         return await message.answer("⛔ فقط ادمین‌ها اجازه مشاهده فایل‌ها و آمار را دارند.")
 
@@ -1424,16 +1346,6 @@ async def dashboard_home_callback(callback: CallbackQuery):
 # DONE / CANCEL
 # =========================================================
 
-@dp.message(F.text == "✅ پایان")
-async def finish_group_button(message: Message):
-    await done_handler(message)
-
-
-@dp.message(F.text == "❌ لغو")
-async def cancel_group_button(message: Message):
-    await cancel(message)
-
-
 @dp.message(Command("done"))
 async def done_handler(message: Message):
     uid = message.from_user.id
@@ -1454,11 +1366,9 @@ async def done_handler(message: Message):
         username = await bot_username()
         bot_url = tg_link(username, "group", token)
         web_url = f"{BASE_URL}/g/{token}"
-        count = len(items)
         clear_user_state(uid)
 
         share_url = f"https://t.me/share/url?url={quote(bot_url, safe='')}"
-        total_size = sum(int(item.get("file_size") or 0) for item in items)
         await message.answer(
             "╭─────── 📦 ───────╮\n"
             "│  <b>آپلود گروهی با موفقیت انجام شد!</b>  │\n"
@@ -1476,6 +1386,16 @@ async def done_handler(message: Message):
             f"❌ ساخت مجموعه انجام نشد.\n\n<code>{escape(str(e))}</code>",
             parse_mode="HTML",
         )
+
+
+@dp.message(F.text == "✅ پایان")
+async def group_done_button(message: Message):
+    await done_handler(message)
+
+
+@dp.message(F.text == "❌ لغو")
+async def group_cancel_button(message: Message):
+    await cancel(message)
 
 
 @dp.message(Command("cancel"))
@@ -2498,15 +2418,12 @@ async def global_error_handler(event):
 # =========================================================
 
 async def main():
-    prepare_database_path()
     init_db()
 
     print("=" * 55)
     print("🤖 Telegram Uploader - REBUILT")
     print(f"🌐 BASE_URL: {BASE_URL}")
     print(f"📢 JOIN_CHANNEL: {JOIN_CHANNEL}")
-    print(f"💾 DB_PATH: {DB_PATH}")
-    print(f"👑 ROOT_OWNER: {NEW_OWNER_ID}")
     print("=" * 55)
 
     try:
