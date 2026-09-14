@@ -918,10 +918,10 @@ async def send_item(chat_id, item):
     fid = item["file_id"]
 
     if t == "text":
+        # متن‌های آپلودشده بدون نمایش نام فایل TXT ارسال شوند.
         return await bot.send_message(
             chat_id,
-            f"📄 <b>{escape(item['file_name'] or 'متن')}</b>\n\n"
-            f"{escape(item['text_content'] or '')}",
+            escape(item["text_content"] or ""),
             parse_mode="HTML",
         )
     if t == "document":
