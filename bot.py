@@ -24,11 +24,19 @@ from aiogram.client.session.aiohttp import AiohttpSession
 # =========================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env", override=True)
+# Local .env is useful for development. Railway service variables always win.
+load_dotenv(BASE_DIR / ".env", override=False)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 PROXY_URL = os.getenv("PROXY_URL", "").strip()
-BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8080").strip().rstrip("/")
+_configured_base_url = os.getenv("BASE_URL", "").strip().rstrip("/")
+_railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip().strip("/")
+if _railway_domain and (not _configured_base_url or "127.0.0.1" in _configured_base_url or "localhost" in _configured_base_url):
+    BASE_URL = f"https://{_railway_domain}"
+elif _configured_base_url:
+    BASE_URL = _configured_base_url
+else:
+    BASE_URL = "http://127.0.0.1:8080"
 WEB_PORT = int(os.getenv("WEB_PORT", "8080"))
 JOIN_CHANNEL = os.getenv("JOIN_CHANNEL", "@eldnv").strip()
 
@@ -36,10 +44,16 @@ NEW_OWNER_ID = 8718566270
 # مالک اصلی جدید ربات. عمداً مستقل از .env نگه داشته شده تا فقط همین حساب مالک باشد.
 ROOT_ADMIN_IDS = {NEW_OWNER_ID}
 
-DB_PATH = BASE_DIR / "uploader.db"
+# IMPORTANT: On Railway set DB_PATH=/data/uploader.db and attach a Railway
+# Volume mounted at /data. If DB_PATH is not set, local development keeps
+# using ./uploader.db. The existing database is NEVER overwritten when the
+# persistent path already exists.
+DB_PATH = Path(
+    os.getenv("DB_PATH", str(BASE_DIR / "uploader.db")).strip()
+).expanduser()
 
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN در فایل .env پیدا نشد.")
+    raise RuntimeError("BOT_TOKEN در Railway Variables یا فایل .env پیدا نشد.")
 
 session = AiohttpSession(
     proxy=PROXY_URL or None,
@@ -59,11 +73,50 @@ broadcast_lock = asyncio.Lock()
 # DATABASE
 # =========================================================
 
+def prepare_database_path():
+    """Prepare the configured DB path without overwriting persistent data.
+
+    Local mode:
+        ./uploader.db
+
+    Railway mode:
+        DB_PATH=/data/uploader.db with a Volume mounted at /data.
+
+    If the persistent DB already exists, it is used as-is. If the persistent
+    DB is missing but the repository contains uploader.db, the repository DB
+    is copied once using SQLite backup. This is only a bootstrap operation;
+    it never replaces an existing persistent database.
+    """
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    seed_path = BASE_DIR / "uploader.db"
+    if DB_PATH.resolve() == seed_path.resolve():
+        return
+
+    if DB_PATH.exists():
+        return
+
+    if not seed_path.exists():
+        return
+
+    print(f"💾 Persistent DB not found; bootstrapping once from {seed_path}")
+    src = sqlite3.connect(seed_path)
+    dst = sqlite3.connect(DB_PATH)
+    try:
+        src.backup(dst)
+        dst.commit()
+    finally:
+        dst.close()
+        src.close()
+    print(f"✅ Database initialized at: {DB_PATH}")
+
+
 def db():
     c = sqlite3.connect(DB_PATH, timeout=30)
     c.row_factory = sqlite3.Row
     c.execute("PRAGMA foreign_keys=ON")
     c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA synchronous=FULL")
     c.execute("PRAGMA busy_timeout=30000")
     return c
 
@@ -279,7 +332,12 @@ def bot_status_text():
 
 
 def is_root(uid):
-    return uid in ROOT_ADMIN_IDS
+    """بررسی مالک اصلی ربات؛ مستقل از رکورد دیتابیس."""
+    try:
+        uid = int(uid)
+    except (TypeError, ValueError):
+        return False
+    return uid == NEW_OWNER_ID or uid in ROOT_ADMIN_IDS
 
 
 def is_admin(uid):
@@ -311,7 +369,7 @@ def is_blocked(uid):
 # =========================================================
 
 def add_admin(uid, by):
-    if uid in ROOT_ADMIN_IDS:
+    if is_root(uid):
         return False, "این کاربر ادمین اصلی است."
     c = db()
     try:
@@ -328,7 +386,7 @@ def add_admin(uid, by):
 
 
 def remove_admin(uid):
-    if uid in ROOT_ADMIN_IDS:
+    if is_root(uid):
         return False, "ادمین اصلی قابل حذف نیست."
     c = db()
     cur = c.execute("DELETE FROM admins WHERE user_id=?", (uid,))
@@ -339,7 +397,7 @@ def remove_admin(uid):
 
 
 def block_user(uid, by):
-    if uid in ROOT_ADMIN_IDS or is_admin(uid):
+    if is_root(uid) or is_admin(uid):
         return False, "ادمین‌ها قابل مسدودسازی نیستند."
     c = db()
     c.execute("""
@@ -947,8 +1005,40 @@ async def process_upload(message: Message):
 
 @dp.callback_query(F.data == "ui_files")
 async def upload_ui_files(callback: CallbackQuery):
+    # callback.message.from_user is the BOT, not the person who pressed the button.
+    # Calling my_files(callback.message) therefore made the bot look like a non-admin.
+    uid = callback.from_user.id
+    if not is_admin(uid):
+        return await callback.answer("⛔ فقط ادمین‌ها اجازه مشاهده فایل‌ها و آمار را دارند.", show_alert=True)
+
     await callback.answer()
-    await my_files(callback.message)
+    c = db()
+    user_row = c.execute("SELECT * FROM users WHERE user_id=?", (uid,)).fetchone()
+    users_total = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    blocked_users = c.execute("SELECT COUNT(*) FROM blocked_users").fetchone()[0]
+    active_users = max(users_total - blocked_users, 0)
+    files_total = c.execute("SELECT COUNT(*) FROM files WHERE active=1").fetchone()[0]
+    groups_total = c.execute("SELECT COUNT(*) FROM groups WHERE active=1").fetchone()[0]
+    downloads = c.execute("SELECT COALESCE(SUM(downloads),0) FROM files WHERE active=1").fetchone()[0]
+    total_size = c.execute("SELECT COALESCE(SUM(file_size),0) FROM files WHERE active=1").fetchone()[0]
+    recent_files = c.execute("""
+        SELECT * FROM files
+        WHERE owner_id=? AND active=1
+        ORDER BY id DESC LIMIT 10
+    """, (uid,)).fetchall()
+    c.close()
+
+    bot_info = await bot.get_me()
+    text = build_stats_dashboard(
+        bot_info, uid, user_row, users_total, active_users, blocked_users,
+        files_total, groups_total, downloads, total_size, recent_files
+    )
+    await callback.message.answer(
+        text,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=stats_dashboard_keyboard(recent_files, bot_info.username),
+    )
 
 
 @dp.callback_query(F.data == "ui_upload")
@@ -1066,12 +1156,6 @@ async def start_handler(message: Message):
             group, items = get_group(token[6:])
             if not group:
                 return await message.answer("❌ مجموعه پیدا نشد.")
-
-            await message.answer(
-                f"📦 <b>{escape(group['title'] or 'مجموعه فایل')}</b>\n"
-                f"📁 تعداد: {len(items)}",
-                parse_mode="HTML",
-            )
 
             sent = 0
             for item in items:
@@ -2398,12 +2482,16 @@ async def global_error_handler(event):
 # =========================================================
 
 async def main():
+    prepare_database_path()
     init_db()
 
     print("=" * 55)
     print("🤖 Telegram Uploader - REBUILT")
     print(f"🌐 BASE_URL: {BASE_URL}")
     print(f"📢 JOIN_CHANNEL: {JOIN_CHANNEL}")
+    print(f"💾 DB_PATH: {DB_PATH}")
+    print(f"👑 ROOT_OWNER: {NEW_OWNER_ID}")
+    print(f"🔑 ROOT CHECK: {is_root(NEW_OWNER_ID)}")
     print("=" * 55)
 
     try:
