@@ -50,9 +50,15 @@ if IS_RAILWAY and PROXY_URL in {
     PROXY_URL = ""
 
 BASE_URL = os.getenv("BASE_URL", "").strip().rstrip("/")
-if not BASE_URL:
-    railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip().rstrip("/")
-    BASE_URL = f"https://{railway_domain}" if railway_domain else "http://127.0.0.1:8080"
+railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip().rstrip("/")
+if IS_RAILWAY:
+    # در Railway لینک وب باید دامنه عمومی سرویس باشد، نه localhost.
+    if railway_domain:
+        BASE_URL = f"https://{railway_domain}"
+    elif BASE_URL.startswith(("http://127.0.0.1", "http://localhost", "https://127.0.0.1", "https://localhost")):
+        BASE_URL = ""
+elif not BASE_URL:
+    BASE_URL = "http://127.0.0.1:8080"
 
 # Railway پورت را از PORT در اختیار برنامه قرار می‌دهد.
 WEB_PORT = int(os.getenv("PORT", os.getenv("WEB_PORT", "8080")))
@@ -198,6 +204,10 @@ def init_db():
     c.execute("""
         INSERT OR IGNORE INTO bot_settings(key, value)
         VALUES('storage_photos', '0')
+    """)
+    c.execute("""
+        INSERT OR IGNORE INTO bot_settings(key, value)
+        VALUES('auto_delete_20', '0')
     """)
 
     c.execute("""
@@ -647,6 +657,19 @@ def tg_link(username, kind, token):
     return f"https://t.me/{username}?start={kind}_{token}"
 
 
+async def _delete_after_20(msg):
+    try:
+        await asyncio.sleep(20)
+        await msg.delete()
+    except Exception as e:
+        print("AUTO DELETE ERROR:", repr(e))
+
+
+def schedule_auto_delete(msg):
+    if setting("auto_delete_20", "0") == "1":
+        asyncio.create_task(_delete_after_20(msg))
+
+
 def clear_user_state(uid):
     admin_actions.pop(uid, None)
     upload_modes.pop(uid, None)
@@ -749,17 +772,40 @@ def group_success_keyboard(bot_url, web_url, token):
 
 
 def settings_keyboard():
+    auto_status = "روشن 🟢" if setting("auto_delete_20", "0") == "1" else "خاموش 🔴"
     return ReplyKeyboardMarkup(
         keyboard=[
-            [styled_button("👥 لیست کاربران", "primary"), styled_button("🚫 لیست مسدودها", "danger")],
-            [styled_button("👑 لیست ادمین‌ها", "primary"), styled_button("➕ افزودن ادمین", "success")],
-            [styled_button("➖ حذف ادمین", "danger"), styled_button("🔐 عضویت اجباری", "primary")],
+            [styled_button("👥 لیست کاربران", "primary"), styled_button("👑 مدیریت ادمین‌ها", "primary")],
+            [styled_button("🚫 مدیریت مسدودی", "danger"), styled_button("🔐 عضویت اجباری", "primary")],
             [styled_button("📊 آمار کلی", "primary"), styled_button("📁 تنظیمات فایل‌ها", "primary")],
-            [styled_button("🌐 تغییر زبان", "primary"), styled_button("📣 پیام همگانی", "success")],
+            [styled_button(f"🗑 حذف خودکار ۲۰ ثانیه‌ای: {auto_status}", "success" if auto_status.startswith("روشن") else "danger"), styled_button("🌐 تغییر زبان", "primary")],
+            [styled_button("📣 پیام همگانی", "success")],
             [styled_button("🏠 بازگشت به منوی اصلی", "primary")],
         ],
         resize_keyboard=True,
         is_persistent=True,
+    )
+
+
+def admin_manage_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [styled_button("👑 لیست ادمین‌ها", "primary")],
+            [styled_button("➕ افزودن ادمین", "success"), styled_button("➖ حذف ادمین", "danger")],
+            [styled_button("🔙 بازگشت به تنظیمات", "primary")],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def blocked_manage_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [styled_button("🚫 لیست مسدودها", "danger")],
+            [styled_button("🚫 مسدود کردن کاربر", "danger"), styled_button("✅ رفع مسدودی", "success")],
+            [styled_button("🔙 بازگشت به تنظیمات", "primary")],
+        ],
+        resize_keyboard=True,
     )
 
 
@@ -1119,12 +1165,6 @@ async def start_handler(message: Message):
             if not group:
                 return await message.answer("❌ مجموعه پیدا نشد.")
 
-            await message.answer(
-                f"📦 <b>{escape(group['title'] or 'مجموعه فایل')}</b>\n"
-                f"📁 تعداد: {len(items)}",
-                parse_mode="HTML",
-            )
-
             sent = 0
             for item in items:
                 try:
@@ -1418,6 +1458,7 @@ async def done_handler(message: Message):
             disable_web_page_preview=True,
             reply_markup=group_success_keyboard(bot_url, web_url, token),
         )
+        schedule_auto_delete(sent)
     except Exception as e:
         print("GROUP CREATE ERROR:", repr(e))
         await message.answer(
@@ -1503,6 +1544,21 @@ async def back_settings(message: Message):
     await send_settings(message)
 
 
+@dp.message(F.text.startswith("🗑 حذف خودکار ۲۰ ثانیه‌ای:"))
+async def toggle_auto_delete(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    new = "0" if setting("auto_delete_20", "0") == "1" else "1"
+    set_setting("auto_delete_20", new)
+    status = "فعال 🟢" if new == "1" else "غیرفعال 🔴"
+    await message.answer(
+        f"🗑 <b>حذف خودکار ۲۰ ثانیه‌ای {status} شد.</b>\n\n"
+        "پیام‌های نتیجه آپلود، در صورت فعال بودن، بعد از ۲۰ ثانیه حذف می‌شوند.",
+        parse_mode="HTML",
+        reply_markup=settings_keyboard(),
+    )
+
+
 # =========================================================
 # FILE SETTINGS
 # =========================================================
@@ -1558,7 +1614,7 @@ async def web_settings(message: Message):
     await message.answer(
         f"🌐 <b>تنظیمات لینک وب</b>\n\n"
         f"آدرس فعلی:\n<code>{escape(BASE_URL)}</code>\n\n"
-        "برای تغییر، BASE_URL را در .env تغییر بده و ربات را Restart کن.",
+        "لینک وب از دامنه عمومی Railway ساخته می‌شود. اگر آدرس بالا خالی است، برای سرویس Railway یک Public Domain بساز و دوباره Deploy کن.",
         parse_mode="HTML",
         reply_markup=file_settings_keyboard(),
     )
@@ -1644,6 +1700,20 @@ async def test_channels(message: Message):
 # ADMIN LISTS / STATS
 # =========================================================
 
+@dp.message(F.text == "👑 مدیریت ادمین‌ها")
+async def admin_manage(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    await message.answer("👑 <b>مدیریت ادمین‌ها</b>\n\nیک گزینه را انتخاب کن:", parse_mode="HTML", reply_markup=admin_manage_keyboard())
+
+
+@dp.message(F.text == "🚫 مدیریت مسدودی")
+async def blocked_manage(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    await message.answer("🚫 <b>مدیریت مسدودی</b>\n\nیک گزینه را انتخاب کن:", parse_mode="HTML", reply_markup=blocked_manage_keyboard())
+
+
 @dp.message(F.text == "👥 لیست کاربران")
 async def users_list(message: Message):
     if not is_admin(message.from_user.id):
@@ -1695,7 +1765,7 @@ async def blocked_list(message: Message):
     await message.answer(
         text if rows else text + "لیست خالی است.",
         parse_mode="HTML",
-        reply_markup=settings_keyboard(),
+        reply_markup=blocked_manage_keyboard(),
     )
 
 
@@ -1721,7 +1791,7 @@ async def admin_list(message: Message):
     await message.answer(
         text if rows else text + "لیست خالی است.",
         parse_mode="HTML",
-        reply_markup=settings_keyboard(),
+        reply_markup=admin_manage_keyboard(),
     )
 
 
@@ -1762,6 +1832,26 @@ async def global_stats(message: Message):
 # =========================================================
 # ADMIN ACTIONS
 # =========================================================
+
+@dp.message(F.text == "🚫 مسدود کردن کاربر")
+async def block_user_start(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    admin_actions[message.from_user.id] = "block_user"
+    upload_modes.pop(message.from_user.id, None)
+    upload_items.pop(message.from_user.id, None)
+    await message.answer("🚫 آیدی عددی کاربر را بفرست.\nلغو: /cancel")
+
+
+@dp.message(F.text == "✅ رفع مسدودی")
+async def unblock_user_start(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔ دسترسی ندارید.")
+    admin_actions[message.from_user.id] = "unblock_user"
+    upload_modes.pop(message.from_user.id, None)
+    upload_items.pop(message.from_user.id, None)
+    await message.answer("✅ آیدی عددی کاربر را بفرست.\nلغو: /cancel")
+
 
 @dp.message(F.text == "➕ افزودن ادمین")
 async def add_admin_start(message: Message):
@@ -1978,7 +2068,9 @@ MENU_TEXTS = {
     "📦 کانال ذخیره‌سازی", "🌐 تنظیمات لینک وب", "🏠 بازگشت به منوی اصلی",
     "🏠 منوی اصلی", "🔙 منوی اصلی", "🔙 بازگشت به تنظیمات", "🇮🇷 فارسی",
     "🇬🇧 English", "➕ افزودن کانال", "🗑 حذف کانال", "📋 لیست کانال‌ها",
-    "🧪 تست کانال‌ها",
+    "🧪 تست کانال‌ها", "👑 مدیریت ادمین‌ها", "🚫 مدیریت مسدودی",
+    "🚫 مسدود کردن کاربر", "✅ رفع مسدودی",
+    "🗑 حذف خودکار ۲۰ ثانیه‌ای: خاموش 🔴", "🗑 حذف خودکار ۲۰ ثانیه‌ای: روشن 🟢",
 }
 
 
@@ -2103,6 +2195,20 @@ async def handle_admin_action_input(message: Message, action: str):
             ("✅ " if ok else "❌ ") + text,
             reply_markup=join_manage_keyboard(),
         )
+
+    if action in ("block_user", "unblock_user"):
+        if not is_root(uid):
+            admin_actions.pop(uid, None)
+            return await message.answer("⛔ فقط Root Admin اجازه دارد.")
+        if not raw.isdigit():
+            return await message.answer("❌ فقط آیدی عددی بفرست.")
+        target = int(raw)
+        if action == "block_user":
+            ok, text = block_user(target, uid)
+        else:
+            ok, text = unblock_user(target)
+        admin_actions.pop(uid, None)
+        return await message.answer(("✅ " if ok else "❌ ") + text, reply_markup=blocked_manage_keyboard())
 
     if action in ("add_admin", "remove_admin"):
         if not is_root(uid):
@@ -2406,9 +2512,14 @@ async def download_file(request):
         return web.Response(text="Download failed", status=500)
 
 
+async def health(request):
+    return web.Response(text="OK", content_type="text/plain")
+
+
 async def start_web_server():
     app = web.Application(client_max_size=0)
     app.router.add_get("/", home)
+    app.router.add_get("/health", health)
     app.router.add_get("/f/{token}", download_page)
     app.router.add_get("/g/{token}/item/{position}", group_item_media)
     app.router.add_get("/g/{token}/download/{position}", group_item_download)
