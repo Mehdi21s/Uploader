@@ -332,16 +332,11 @@ def bot_status_text():
 
 
 def is_root(uid):
-    """بررسی مالک اصلی ربات؛ مستقل از رکورد دیتابیس."""
-    try:
-        uid = int(uid)
-    except (TypeError, ValueError):
-        return False
-    return uid == NEW_OWNER_ID or uid in ROOT_ADMIN_IDS
+    return int(uid) == NEW_OWNER_ID
 
 
 def is_admin(uid):
-    if uid in ROOT_ADMIN_IDS:
+    if int(uid) == NEW_OWNER_ID or uid in ROOT_ADMIN_IDS:
         return True
     c = db()
     r = c.execute(
@@ -369,7 +364,7 @@ def is_blocked(uid):
 # =========================================================
 
 def add_admin(uid, by):
-    if is_root(uid):
+    if uid in ROOT_ADMIN_IDS:
         return False, "این کاربر ادمین اصلی است."
     c = db()
     try:
@@ -386,7 +381,7 @@ def add_admin(uid, by):
 
 
 def remove_admin(uid):
-    if is_root(uid):
+    if uid in ROOT_ADMIN_IDS:
         return False, "ادمین اصلی قابل حذف نیست."
     c = db()
     cur = c.execute("DELETE FROM admins WHERE user_id=?", (uid,))
@@ -397,7 +392,7 @@ def remove_admin(uid):
 
 
 def block_user(uid, by):
-    if is_root(uid) or is_admin(uid):
+    if uid in ROOT_ADMIN_IDS or is_admin(uid):
         return False, "ادمین‌ها قابل مسدودسازی نیستند."
     c = db()
     c.execute("""
@@ -699,6 +694,19 @@ def styled_inline_button(text, *, style=None, callback_data=None, url=None):
         return InlineKeyboardButton(**kwargs)
 
 
+def group_upload_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                styled_button("✅ پایان", "success"),
+                styled_button("❌ لغو", "danger"),
+            ]
+        ],
+        resize_keyboard=True,
+        is_persistent=False,
+    )
+
+
 def main_keyboard():
     toggle_text = "🔴 خاموش کردن ربات" if bot_is_enabled() else "🟢 روشن کردن ربات"
     toggle_style = "danger" if bot_is_enabled() else "success"
@@ -918,7 +926,6 @@ async def send_item(chat_id, item):
     fid = item["file_id"]
 
     if t == "text":
-        # متن‌های آپلودشده بدون نمایش نام فایل TXT ارسال شوند.
         return await bot.send_message(
             chat_id,
             escape(item["text_content"] or ""),
@@ -1078,9 +1085,10 @@ async def group_add_file_callback(callback: CallbackQuery):
     await callback.answer("➕ حالت افزودن فایل فعال شد.")
     await callback.message.answer(
         "📦 <b>افزودن فایل به مجموعه</b>\n\n"
-        "فایل‌های جدید را بفرست و در پایان /done را بزن.\n"
-        "لغو: /cancel",
+        "فایل‌های جدید را بفرست و در پایان «✅ پایان» را بزن.\n"
+        "برای لغو «❌ لغو» را بزن.",
         parse_mode="HTML",
+        reply_markup=group_upload_keyboard(),
     )
 
 
@@ -1221,9 +1229,10 @@ async def upload_group(message: Message):
     await message.answer(
         "🟣 <b>آپلود گروهی فعال شد.</b>\n\n"
         "فایل‌ها را یکی‌یکی بفرست.\n"
-        "در پایان /done را بزن.\n\n"
-        "لغو: /cancel",
+        "در پایان «✅ پایان» را بزن.\n"
+        "برای لغو «❌ لغو» را بزن.",
         parse_mode="HTML",
+        reply_markup=group_upload_keyboard(),
     )
 
 
@@ -1415,6 +1424,16 @@ async def dashboard_home_callback(callback: CallbackQuery):
 # DONE / CANCEL
 # =========================================================
 
+@dp.message(F.text == "✅ پایان")
+async def finish_group_button(message: Message):
+    await done_handler(message)
+
+
+@dp.message(F.text == "❌ لغو")
+async def cancel_group_button(message: Message):
+    await cancel(message)
+
+
 @dp.message(Command("done"))
 async def done_handler(message: Message):
     uid = message.from_user.id
@@ -1444,9 +1463,6 @@ async def done_handler(message: Message):
             "╭─────── 📦 ───────╮\n"
             "│  <b>آپلود گروهی با موفقیت انجام شد!</b>  │\n"
             "╰──────────────────╯\n\n"
-            "📦 <b>مجموعه فایل‌ها</b>\n"
-            f"📁 تعداد آیتم‌ها: <b>{count}</b>\n"
-            f"💾 حجم کل: <b>{fmt_size(total_size)}</b>\n"
             f"🔐 شناسه: <code>{escape(token)}</code>\n"
             f"🔗 لینک اشتراک‌گذاری:\n<code>{escape(bot_url)}</code>\n\n"
             "یکی از گزینه‌های زیر را انتخاب کن:",
@@ -2491,7 +2507,6 @@ async def main():
     print(f"📢 JOIN_CHANNEL: {JOIN_CHANNEL}")
     print(f"💾 DB_PATH: {DB_PATH}")
     print(f"👑 ROOT_OWNER: {NEW_OWNER_ID}")
-    print(f"🔑 ROOT CHECK: {is_root(NEW_OWNER_ID)}")
     print("=" * 55)
 
     try:
